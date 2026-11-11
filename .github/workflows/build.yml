@@ -365,9 +365,20 @@ jobs:
             key="$RUNNER_TEMP/apk-sign.key"
             printf '%s\n' "$APK_PRIVATE_KEY" > "$key"
             chmod 600 "$key"
+            # 公钥直接从私钥推出来：仓库里的那份只用于对照，避免 secret 里的私钥
+            # 和入库的公钥不是一对（那样客户端一律 UNTRUSTED）
+            openssl ec -in "$key" -pubout -out "$RUNNER_TEMP/key-build.pem" 2>/dev/null ||
+              { echo "::error::APK_PRIVATE_KEY 不是有效的 EC 私钥"; exit 1; }
+            echo "私钥 sha256: $(sha256sum "$key" | cut -d' ' -f1)"
+            echo "推导公钥 sha256: $(sha256sum "$RUNNER_TEMP/key-build.pem" | cut -d' ' -f1)"
             APK="$apk" sh scripts/apk-repo.sh "$dir" "$key"
-            cp key/key-build.pem dist/repo/key-build.pem
-            "$apk" verify --keys-dir key "$dir/packages.adb"
+            mkdir -p "$RUNNER_TEMP/keys"
+            cp "$RUNNER_TEMP/key-build.pem" "$RUNNER_TEMP/keys/key-build.pem"
+            "$apk" verify --keys-dir "$RUNNER_TEMP/keys" "$dir/packages.adb"
+            cp "$RUNNER_TEMP/key-build.pem" dist/repo/key-build.pem
+            if ! cmp -s "$RUNNER_TEMP/key-build.pem" key/key-build.pem; then
+              echo "::warning::secret 里的私钥和仓库 key/key-build.pem 不是一对，分支里放的是推导出来的公钥"
+            fi
           else
             echo "::warning::没配 secret APK_PRIVATE_KEY，索引未签名，客户端要 apk add --allow-untrusted"
             APK="$apk" sh scripts/apk-repo.sh "$dir"
@@ -418,10 +429,16 @@ jobs:
             found=1
           done
           [ "$found" = 1 ] || { echo "::error::没有 apk 产物"; exit 1; }
-          if [ -f key/key-build.pem ]; then
+          # 公钥用各 job 从私钥推导出来的那份（和索引签名必然配对）
+          pem=$(ls artifacts/packages-apk-*/repo/key-build.pem 2>/dev/null | head -1)
+          if [ -n "$pem" ]; then
+            cp "$pem" repo/key-build.pem
+            echo "公钥取自 $(dirname "$(dirname "$pem")")"
+          elif [ -f key/key-build.pem ]; then
             cp key/key-build.pem repo/key-build.pem
+            echo "::warning::产物里没有公钥，用了仓库里的 key/key-build.pem"
           else
-            echo "::warning::仓库里没有 key/key-build.pem，客户端无法验证签名"
+            echo "::warning::没有公钥，客户端无法验证签名"
           fi
           find repo -maxdepth 2 -type f | sort | head -40
 

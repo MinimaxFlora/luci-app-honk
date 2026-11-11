@@ -28,17 +28,28 @@ fi
 rm -f packages.adb index.json
 
 # apk 读包头，不看文件名；--pkgname-spec 只是让索引里的文件名和实际文件对得上
+log=$(mktemp)
 if [ -n "$key" ] && [ -f "$key" ]; then
-	"$apk" --sign-key "$key" mkndx --allow-untrusted \
-		--pkgname-spec '${name}-${version}.apk' -o packages.adb "$@" 2>&1 |
-		grep -vE '^WARNING' || true
+	if ! "$apk" --sign-key "$key" mkndx --allow-untrusted \
+		--pkgname-spec '${name}-${version}.apk' -o packages.adb "$@" >"$log" 2>&1; then
+		cat "$log" >&2
+		rm -f "$log"
+		echo "apk-repo: 签名索引失败" >&2
+		exit 1
+	fi
 	signed=yes
 else
-	"$apk" mkndx --allow-untrusted \
-		--pkgname-spec '${name}-${version}.apk' -o packages.adb "$@" 2>&1 |
-		grep -vE '^WARNING' || true
+	if ! "$apk" mkndx --allow-untrusted \
+		--pkgname-spec '${name}-${version}.apk' -o packages.adb "$@" >"$log" 2>&1; then
+		cat "$log" >&2
+		rm -f "$log"
+		echo "apk-repo: 生成索引失败" >&2
+		exit 1
+	fi
 	signed=no
 fi
+sed -e '/^WARNING/d' "$log" | head -2 || true
+rm -f "$log"
 
 [ -s packages.adb ] || { echo "apk-repo: 索引没有生成" >&2; exit 1; }
 
