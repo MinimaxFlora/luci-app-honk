@@ -56,8 +56,8 @@ git clone --depth 1 --branch v0.1.0-beta.6 https://github.com/daeuniverse/honk h
 | `formats` | `apk,ipk` | 只编一种就填 `apk` 或 `ipk` |
 | `arches` | `all` | 只编某些架构就填 `x86_64` 或 `x86_64,aarch64_cortex-a53` |
 
-每个 job 的产物是一组 `.ipk`/`.apk` 加 `SHA256SUMS`，作为 artifact 上传，名字是
-`packages-<格式>-<架构>`。
+每个 job 的产物是一组 `.ipk`/`.apk` 加 `SHA256SUMS-<格式>-<架构>`，作为 artifact
+上传，名字是 `packages-<格式>-<架构>`。
 
 推 `v*` tag（例如 `v0.1.0-beta.6`）会把这轮的 10 个产物合成一个 Release：tag 就是
 版本号，工作流会核对它和这次编译用的 `honk_ref` 对得上（允许 `v0.1.0-beta.6-r2`

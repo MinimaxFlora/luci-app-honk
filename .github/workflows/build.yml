@@ -280,6 +280,7 @@ jobs:
 
           # 翻译包和 luci-app-honk 由同一个 Makefile 定义，编这个目录就会一起出来；
           # 它们默认只按固件语言选择，所以在命令行上显式打开
+          LUCI_APP_VERSION="$HONK_VERSION" \
           make package/luci-app-honk/compile V=s \
                CONFIG_PACKAGE_luci-app-honk=m \
                CONFIG_PACKAGE_luci-i18n-honk-zh-cn=m \
@@ -303,7 +304,15 @@ jobs:
           find "$SDK_DIR/bin/packages" -path '*/local/*' -type f \
             \( -name '*.apk' -o -name '*.ipk' \) -exec cp -v -t dist {} +
           cd dist
-          # 校验文件名带上格式和架构，多个 artifact 合并进 Release 时不会撞名
+          # apk 的文件名里没有架构，多个架构合并进 Release 会互相覆盖，补个后缀；
+          # ipk 本来就带（_x86_64 / _all）
+          if [ "$FORMAT" = "apk" ]; then
+            for f in *.apk; do
+              mv "$f" "${f%.apk}-${OPENWRT_ARCH}.apk"
+            done
+          fi
+          ls -l
+          # 校验文件名带上格式和架构，多个 artifact 合并时不会撞名
           sha256sum * > "SHA256SUMS-${FORMAT}-${OPENWRT_ARCH}"
           cat "SHA256SUMS-${FORMAT}-${OPENWRT_ARCH}"
 

@@ -19,6 +19,14 @@ LUCI_TITLE:=LuCI support for honk
 LUCI_DEPENDS:=+luci-base +honk +jshn +flock +coreutils-timeout
 LUCI_PKGARCH:=all
 
+# luci.mk 默认用 git 提交时间算版本，编译目录没有 .git 时退回文件 mtime——那样每个
+# CI job 算出来的版本号都不一样。CI 传 LUCI_APP_VERSION（= honk 版本）把版本钉住；
+# 本地不传就沿用 luci.mk 自己算的。
+ifneq ($(LUCI_APP_VERSION),)
+  PKG_VERSION:=$(LUCI_APP_VERSION)
+  PKG_PO_VERSION:=$(LUCI_APP_VERSION)
+endif
+
 include $(TOPDIR)/feeds/luci/luci.mk
 
 # call BuildPackage - OpenWrt buildroot signature
