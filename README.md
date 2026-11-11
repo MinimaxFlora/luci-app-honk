@@ -59,6 +59,10 @@ git clone --depth 1 --branch v0.1.0-beta.6 https://github.com/daeuniverse/honk h
 每个 job 的产物是一组 `.ipk`/`.apk` 加 `SHA256SUMS`，作为 artifact 上传，名字是
 `packages-<格式>-<架构>`。
 
+推 `v*` tag（例如 `v0.1.0-beta.6`）会把这轮的 10 个产物合成一个 Release：tag 就是
+版本号，工作流会核对它和这次编译用的 `honk_ref` 对得上（允许 `v0.1.0-beta.6-r2`
+这种重发后缀）。手动触发时填 `release_tag` 也能发。
+
 几点说明：
 
 * `runs-on: ubuntu-26.04` 用的是 GitHub 托管的 26.04 镜像；如果这个标签还没上线，

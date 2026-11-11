@@ -11,9 +11,8 @@
 # 每个包都从一个只放它自己的临时 feed 目录编译：这样 OpenWrt 不会顺着 DEPENDS
 # 把同仓库的另一个包（比如 honk → vmlinux-btf）一起拉进来编。
 #
-# GitHub Actions 工作流。
-# runs-on: ubuntu-26.04 用的是 GitHub 托管的 26.04 镜像；如果这个标签还没上线，
-# 换成 ubuntu-latest 或 ubuntu-24.04。
+# 推 v* tag 时（例如 v0.1.0-beta.6）会把全部产物发到 Release，tag 版本必须和
+# honk_ref 对上；手动触发时也可以填 release_tag 指定要发的 tag。
 name: build
 
 on:
@@ -42,10 +41,14 @@ on:
         description: '要构建的架构，逗号分隔；all 表示全部'
         required: false
         default: 'all'
+      release_tag:
+        description: '顺手发 Release 用的 tag（例如 v0.1.0-beta.6），留空则只在推 tag 时发布'
+        required: false
+        default: ''
 
 jobs:
-  # (格式 × 架构) 组合要能按输入裁剪，而 GitHub 不允许在 job 级
-  # if 里引用 matrix，所以先在一个作业里算出矩阵，再用 fromJSON 交给 build
+  # (格式 × 架构) 组合要能按输入裁剪，而 GitHub 不允许在 job 级 if 里引用 matrix，
+  # 所以先在一个作业里算出矩阵，再用 fromJSON 交给 build
   plan:
     name: 规划构建矩阵
     runs-on: ubuntu-26.04
@@ -116,7 +119,7 @@ jobs:
       KERNEL_ARCH: ${{ matrix.kernel_arch }}
     steps:
       - name: 检出本仓库（feed）
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           # luci.mk 用最后一次改动包目录的 commit 算版本号，浅克隆会把它算成当前 commit
           fetch-depth: 0
@@ -300,14 +303,82 @@ jobs:
           find "$SDK_DIR/bin/packages" -path '*/local/*' -type f \
             \( -name '*.apk' -o -name '*.ipk' \) -exec cp -v -t dist {} +
           cd dist
-          sha256sum * > SHA256SUMS
-          echo "---- SHA256SUMS ----"
-          cat SHA256SUMS
+          # 校验文件名带上格式和架构，多个 artifact 合并进 Release 时不会撞名
+          sha256sum * > "SHA256SUMS-${FORMAT}-${OPENWRT_ARCH}"
+          cat "SHA256SUMS-${FORMAT}-${OPENWRT_ARCH}"
 
       - name: 上传产物
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: packages-${{ matrix.format }}-${{ matrix.openwrt_arch }}
           path: dist/*
           if-no-files-found: error
           retention-days: 30
+
+  # 推 v* tag 时把 10 个 job 的产物合成一个 Release：tag 就是版本号，必须和这次
+  # 编译用的 honk_ref 对上
+  release:
+    name: 发布 ${{ inputs.release_tag || github.ref_name }}
+    needs: [plan, build]
+    if: ${{ startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '') }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ inputs.release_tag || github.ref_name }}
+      HONK_REF_IN: ${{ inputs.honk_ref }}
+    steps:
+      - name: 下载全部产物
+        uses: actions/download-artifact@v8
+        with:
+          path: dist
+          pattern: packages-*
+          merge-multiple: true
+
+      - name: 核对 tag 与版本号
+        id: check
+        run: |
+          set -eu
+          ref="${HONK_REF_IN:-v0.1.0-beta.6}"
+          honk_ver="${ref#v}"
+          tag_ver="${TAG#v}"
+
+          # 允许 v0.1.0-beta.6-r2 这种重发后缀，其余必须一致
+          case "$tag_ver" in
+            "$honk_ver"|"$honk_ver"-*) ;;
+            *)
+              echo "::error::tag ${TAG} 和这次编译的 honk 版本 ${honk_ver} 对不上"
+              exit 1
+              ;;
+          esac
+          echo "tag=${TAG}，honk=${honk_ver}"
+          echo "honk_ver=${honk_ver}" >> "$GITHUB_OUTPUT"
+          ls -l dist
+
+      - name: 创建（或复用）Release 并上传
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          honk_ver="${{ steps.check.outputs.honk_ver }}"
+          cat > notes.md <<EOF
+          honk ${honk_ver} 的 OpenWrt 包：apk 用 OpenWrt 25.12.x，ipk 用 24.10.x。
+
+          | 包 | 说明 |
+          |---|---|
+          | \`honk\` | \`/usr/bin/honk-core\`，依赖 vmlinux-btf、v2ray-geoip/geosite 和几个 kmod |
+          | \`luci-app-honk\` + \`luci-i18n-honk-zh-cn\` / \`-zh-tw\` | LuCI 页面，架构无关 |
+          | \`vmlinux-btf\` | CO-RE 用的 BTF，包版本就是内核版本，只能装到配套内核上 |
+
+          每个包都带 \`SHA256SUMS-<格式>-<架构>\` 方便校验；apk 未签名时装的时候要
+          \`apk add --allow-untrusted\`。
+          EOF
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release ${TAG} 已存在，覆盖资产"
+          else
+            gh release create "$TAG" --target "$GITHUB_SHA" --title "$TAG" --notes-file notes.md
+          fi
+          gh release upload "$TAG" dist/* --clobber
+          gh release view "$TAG" --json tagName,url --jq '"\(.tagName) -> \(.url)"'
