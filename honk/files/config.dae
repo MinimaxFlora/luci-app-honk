@@ -4,8 +4,8 @@
 # This file only provides a working skeleton: add your nodes or subscriptions
 # and routing rules before enabling the service, and adjust the interfaces for
 # the device. Routing falls back to direct, so enabling the service does not
-# break connectivity; DNS does split: 国内域名查 223.5.5.5，国外域名经 dns 里的
-# remote_dns（8.8.8.8，走 proxy 组）。proxy 组里没有节点时国外域名解析不了，
+# break connectivity. DNS does split: 国内域名查 223.5.5.5，国外域名走 dns 里的
+# remote_dns（8.8.8.8，经 proxy 组出去）。proxy 组里没有节点时国外域名解析不了，
 # 先加节点再启用。
 #
 # Interfaces: br-lan is the default OpenWrt LAN bridge; `auto` follows the
@@ -42,19 +42,17 @@ global {
 
 dns {
     upstream {
-        # 国内域名走阿里 DNS 直连
+        # 国内域名走阿里 DNS，直连
         local: 'udp://223.5.5.5:53'
         # 国外域名走 Google DNS，且这个上游本身经 proxy 组出去
         remote_dns: 'tcp+udp://8.8.8.8:53' -> proxy
     }
     routing {
         request {
-            # 不在 geolocation-!cn（即国内）里的域名交给 remote_dns
             qname(geosite: geolocation-!cn) -> remote_dns
             fallback: local
         }
         response {
-            # remote_dns 的答复直接接受，其余（local 的）也接受
             upstream(remote_dns) -> accept
             fallback: accept
         }
@@ -63,10 +61,10 @@ dns {
 
 routing {
     group {
-        # dns.remote_dns 引用了这个组名。把节点加进来，例如
+        # dns.remote_dns 引用了这个组名，节点加在这里，例如
         #   'socks5://user:pass@127.0.0.1:1080'
         #   'ss://...' / 'trojan://...' / subscription('https://...')
-        # 一个节点都没有时这个组是空的，代理也就没有出口。
+        # 组里没有节点时，国外域名解析不了。
         proxy {
         }
     }

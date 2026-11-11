@@ -17,15 +17,18 @@ CI 在 `ubuntu-26.04` 上跑，同时产出两种包格式：**ipk**（OpenWrt 2
 
 ```
 .
-├── .github/workflows/build.yml  # CI：ipk + apk
+├── .github/workflows/build.yml  # CI：ipk + apk，产物推 Release 和 apk 软件源分支
 ├── honk/                        # 包 honk：Makefile + build.sh + files/
 ├── luci-app-honk/               # 包 luci-app-honk：页面、翻译、honk-pkg 助手
 ├── vmlinux-btf/                 # 包 vmlinux-btf：Makefile 从内核头文件生成 BTF（整机编译），
 │   ├── src/                     # 也接受外部给的 blob（SDK/CI 用）；src/ 是 shadow_btf_*.c
 │   └── check-btf.sh             # 校验产物是不是合法 BTF
+├── key/
+│   └── key-build.pem            # 软件源索引的 EC 公钥（私钥只在 CI secret 里）
 └── scripts/
     ├── fetch-openwrt-sdk.sh     # 按版本/target 找 SDK，官方源失败换镜像，sha256 校验
     ├── build-btf.sh             # 用 SDK 的内核头文件生成 BTF
+    ├── apk-repo.sh              # 生成 / 签名 packages.adb + index.json
     └── sign-apk.sh              # 可选：给 .apk 签名（需要 secret APK_PRIVATE_KEY）
 ```
 
@@ -152,6 +155,31 @@ make -j$(nproc) V=s
 honk 本体要 Rust：`rustup`、crate 里钉的 stable 与 nightly（带 `rust-src`）、
 以及 `.github/ci/pins.env` 里钉的 `bpf-linker`，`honk/build.sh` 会在编译时检查并按
 需要安装，编 honk 之前请保证构建机能联网。
+
+## 软件源分支：一键安装 / 检测更新
+
+CI 除了把包传上 Release，还会把每个架构的 `.apk` 和**签名索引**推到 `apk` 分支，
+路由器可以像用官方源那样用它：
+
+```
+https://raw.githubusercontent.com/MinimaxFlora/luci-app-honk/apk/<arch>/packages.adb
+```
+
+- `packages.adb` 由 `scripts/apk-repo.sh` 用 `apk mkndx --sign-key` 生成，签名算法 EC P-256，
+  私钥放在仓库 secret `APK_PRIVATE_KEY`，公钥 `key/key-build.pem` 一起放分支根上
+- 客户端把公钥丢进 `/etc/apk/keys/` 就能验证签名，不需要 `--allow-untrusted`
+- 没配 secret 时索引是未签名的，客户端只能 `apk add --allow-untrusted`
+
+LuCI 页面里的“一键安装”（包没装时显示）做三件事：
+
+1. 按 `/etc/openwrt_release` 的 `DISTRIB_ARCH` 算出架构，写
+   `/etc/apk/repositories.d/honk.list` 指向上面那个索引
+2. 把 `key-build.pem` 下到 `/etc/apk/keys/honk.pem`
+3. 后台跑 `apk update` + `apk add honk luci-app-honk luci-i18n-honk-zh-cn luci-i18n-honk-zh-tw`，
+   页面轮询日志，装完刷新
+
+装好之后“检查更新”就是普通的 `apk update` + `apk query --upgradable`，走的还是 apk 自己的签名校验。
+`vmlinux-btf` 也在同一个源里，它锁内核版本，内核不匹配 apk 会直接拒绝安装。
 
 ## 安装
 

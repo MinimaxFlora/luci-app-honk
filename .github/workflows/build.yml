@@ -16,6 +16,10 @@
 # 换成 ubuntu-latest 或 ubuntu-24.04。
 name: build
 
+# publish 作业要把软件源推到 apk 分支，需要写 contents
+permissions:
+  contents: write
+
 on:
   push:
     branches: [ main, master ]
@@ -52,6 +56,7 @@ jobs:
     timeout-minutes: 10
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
+      has_apk: ${{ steps.plan.outputs.has_apk }}
     steps:
       - name: 计算要构建的 (格式, 架构) 组合
         id: plan
@@ -99,6 +104,8 @@ jobs:
           )"
           echo "$matrix" | python3 -c 'import json,sys; print("组合:", ", ".join(i["format"]+"/"+i["openwrt_arch"] for i in json.load(sys.stdin)["include"]))'
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          # 只有编了 apk 才需要发软件源分支
+          echo "$matrix" | python3 -c 'import json,sys; d=json.load(sys.stdin)["include"]; print("has_apk=%s" % ("true" if any(i["format"]=="apk" for i in d) else "false"))' >> "$GITHUB_OUTPUT"
 
   build:
     name: ${{ matrix.format }} · ${{ matrix.openwrt_arch }}
@@ -340,6 +347,33 @@ jobs:
           sha256sum * > "SHA256SUMS-${FORMAT}-${OPENWRT_ARCH}"
           cat "SHA256SUMS-${FORMAT}-${OPENWRT_ARCH}"
 
+      - name: 生成 apk 软件源索引（带签名）
+        if: matrix.format == 'apk'
+        env:
+          APK_PRIVATE_KEY: ${{ secrets.APK_PRIVATE_KEY }}
+        run: |
+          set -eu
+          apk="$SDK_DIR/staging_dir/host/bin/apk"
+          dir="dist/repo/$OPENWRT_ARCH"
+          mkdir -p "$dir"
+          # 索引里的文件名要和实际文件对得上，把给 Release 加的架构后缀去掉
+          for f in dist/*-"$OPENWRT_ARCH".apk; do
+            base=$(basename "$f")
+            cp "$f" "$dir/${base%-$OPENWRT_ARCH.apk}.apk"
+          done
+          if [ -n "${APK_PRIVATE_KEY:-}" ]; then
+            key="$RUNNER_TEMP/apk-sign.key"
+            printf '%s\n' "$APK_PRIVATE_KEY" > "$key"
+            chmod 600 "$key"
+            APK="$apk" sh scripts/apk-repo.sh "$dir" "$key"
+            cp key/key-build.pem dist/repo/key-build.pem
+            "$apk" verify --keys-dir key "$dir/packages.adb"
+          else
+            echo "::warning::没配 secret APK_PRIVATE_KEY，索引未签名，客户端要 apk add --allow-untrusted"
+            APK="$apk" sh scripts/apk-repo.sh "$dir"
+          fi
+          ls -l "$dir"
+
       - name: 上传产物
         uses: actions/upload-artifact@v7
         with:
@@ -347,3 +381,63 @@ jobs:
           path: dist/*
           if-no-files-found: error
           retention-days: 30
+
+  # 把每个架构的包和签名索引堆到一个 apk 分支上，路由器就能把它当普通 apk 源：
+  #   https://raw.githubusercontent.com/<owner>/<repo>/apk/<arch>/packages.adb
+  # 这样 LuCI 里的一键安装和检测更新都走 apk 自己那套签名校验，不用 --allow-untrusted。
+  publish:
+    name: 发布 apk 软件源
+    needs: [ plan, build ]
+    if: needs.plan.outputs.has_apk == 'true'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    # 源发布失败不该让整轮变红：Release 那边照样有包
+    continue-on-error: true
+    steps:
+      - name: 检出本仓库（拿公钥）
+        uses: actions/checkout@v7
+
+      - name: 下载各架构产物
+        uses: actions/download-artifact@v7
+        with:
+          path: artifacts
+
+      - name: 组装 apk 分支
+        run: |
+          set -eu
+          rm -rf repo
+          mkdir -p repo
+          found=0
+          for d in artifacts/packages-apk-*; do
+            [ -d "$d" ] || continue
+            arch=${d##*packages-apk-}
+            [ -d "$d/repo/$arch" ] || continue
+            mkdir -p "repo/$arch"
+            cp -a "$d/repo/$arch/." "repo/$arch/"
+            echo "  $arch: $(ls -1 "repo/$arch" | wc -l) 个文件"
+            found=1
+          done
+          [ "$found" = 1 ] || { echo "::error::没有 apk 产物"; exit 1; }
+          if [ -f key/key-build.pem ]; then
+            cp key/key-build.pem repo/key-build.pem
+          else
+            echo "::warning::仓库里没有 key/key-build.pem，客户端无法验证签名"
+          fi
+          find repo -maxdepth 2 -type f | sort | head -40
+
+      - name: 推到 apk 分支
+        env:
+          TOKEN: ${{ github.token }}
+          SERVER_URL: ${{ github.server_url }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -eu
+          cd repo
+          git init -q -b apk
+          git add -A
+          git -c user.name=ci -c user.email=ci@users.noreply.github.com \
+            commit -q -m "repo: $SHA 的 apk 软件源"
+          url=$(printf '%s' "$SERVER_URL/$REPO.git" |
+            sed -E "s#^(https?)://#\1://x-access-token:${TOKEN}@#")
+          git push -f "$url" apk

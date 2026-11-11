@@ -18,8 +18,6 @@ PKG_LICENSE:=GPL-3.0-or-later
 LUCI_TITLE:=LuCI support for honk
 LUCI_DEPENDS:=+luci-base +honk +jshn +flock +coreutils-timeout
 LUCI_PKGARCH:=all
-# 包页面的"网站"指向本仓库；上游 honk 是另一个包，它有自己 URL
-LUCI_URL:=https://github.com/MinimaxFlora/luci-app-honk
 
 # luci.mk 默认用 git 提交时间算版本，编译目录没有 .git 时退回文件 mtime——那样每个
 # CI job 算出来的版本号都不一样。CI 传 LUCI_APP_VERSION（= honk 版本）把版本钉住；

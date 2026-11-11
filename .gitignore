@@ -10,3 +10,6 @@ dist/
 *.ipk
 *.apk
 .work/
+# 签名私钥永不入库（CI 用 secret APK_PRIVATE_KEY）
+key/key-build.ec.key
+key/*.key

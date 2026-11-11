@@ -537,7 +537,7 @@ const ServiceView = view.extend({
 		const result = args[0] === 'check' ? await new Promise((resolve, reject) => {
 			const call = { object: 'file', method: 'exec', raise: true, resolve, reject };
 			request.post(rpc.getBaseURL(), {
-				jsonrpc: '2.0', id: 'honk-check', method: 'call',
+				jsonrpc: '2.0', id: 'daeuniverse-check', method: 'call',
 				params: [ rpc.getSessionID(), 'file', 'exec', { command, params: args } ]
 			}, { timeout: 28000, nobatch: true, credentials: true })
 				.then(response => rpc.parseCallReply(call, response), reject);
@@ -575,70 +575,21 @@ const ServiceView = view.extend({
 		return nodes;
 	},
 
-	/* 本仓库的发布查 GitHub：包索引里只有 OpenWrt 仓库的东西，honk 和这个页面的
-	   新版本发在 GitHub Releases 上（passwall 的内核更新也是这么查的）。由浏览器
-	   直接问 api.github.com —— 路由器那边经常连不上 GitHub。 */
-	async fetchGithubRelease() {
-		const repo = 'MinimaxFlora/luci-app-honk';
-		const res = await fetch('https://api.github.com/repos/' + repo + '/releases/latest', {
-			headers: { 'Accept': 'application/vnd.github+json' }, cache: 'no-store'
-		});
-		if (!res.ok)
-			throw new Error('HTTP ' + res.status);
-		const release = await res.json();
-		return { name: release.tag_name, url: release.html_url };
-	},
-
-	/* 包版本 0.1.0_beta6 和 tag v0.1.0-beta.6 只差分隔符 */
-	sameRelease(tag, version) {
-		const norm = value => String(value || '').toLowerCase().replace(/^v/, '').replace(/[^0-9a-z]/g, '');
-		return !!tag && norm(tag) === norm(version);
-	},
-
-	githubStatus(version, tag) {
-		if (this.githubError)
-			return E(tag, {}, _('Could not check GitHub releases: %s').format(this.githubError.message));
-		if (!this.github)
-			return null;
-		const { name, url } = this.github;
-		return this.sameRelease(name, version)
-			? E(tag, {}, _('The GitHub release %s matches the installed version.').format(name))
-			: E(tag, {}, [
-				_('Newer release on GitHub: %s. ').format(name),
-				E('a', { 'href': url, 'target': '_blank', 'rel': 'noopener noreferrer' }, _('Open the release page'))
-			]);
-	},
-
 	async handleCheckUpdates() {
 		this.checkButton.disabled = true;
 		this.packageStatus.replaceChildren(_('Checking for updates…'));
-		this.github = null;
-		this.githubError = null;
-		const github = this.fetchGithubRelease()
-			.then(release => { this.github = release; })
-			.catch(error => { this.githubError = error; });
 		try {
 			const result = await this.packageCommand([ 'check', this.app.name ]);
 			const installed = await this.queryPackages();
-			await github;
 			if (!installed.some(pkg => pkg.name === this.app.name))
 				throw new Error(_('Not installed'));
-			const version = installed.find(pkg => pkg.name === this.app.name)?.version;
 			const updates = result.packages.filter(pkg => installed.some(current => current.name === pkg.name));
 			const warning = tag => result.warning ? [
 				E(tag, {}, _('Package index update failed; using available indexes.')),
 				E('pre', { 'class': 'du-log' }, result.warning)
 			] : [];
-			const githubRow = this.githubStatus(version, 'div');
 			if (!updates.length) {
-				const nodes = warning('div');
-				// 索引没刷新成功，就没有资格说"已是最新"
-				nodes.push(E('div', {}, result.warning
-					? _('The package index could not be refreshed, so updates cannot be confirmed.')
-					: _('Up to date')));
-				if (githubRow)
-					nodes.push(githubRow);
-				this.packageStatus.replaceChildren(...nodes);
+				this.packageStatus.replaceChildren(...warning('div'), E('div', {}, _('Up to date')));
 				return;
 			}
 			this.packageStatus.replaceChildren();
@@ -651,7 +602,6 @@ const ServiceView = view.extend({
 			}, _('Upgrade'));
 			ui.showModal(_('Upgrade'), [
 				...warning('p'),
-				...(githubRow ? [ this.githubStatus(version, 'p') ] : []),
 				E('p', {}, _('Select the packages to upgrade:')),
 				// Rows, not a list: Bootstrap gives li its muted text color.
 				E('div', {}, updates.map((pkg, i) => E('div', {}, E('label', {}, [
@@ -677,6 +627,38 @@ const ServiceView = view.extend({
 		this.packageLog = E('pre', { 'class': 'du-log', 'aria-live': 'polite' }, status.log || '');
 		this.packageProgress = E('p', { 'class': 'spinning' }, message || _('Upgrading…'));
 		ui.showModal(_('Upgrade'), [ this.packageProgress, this.packageLog ]);
+	},
+
+	/* 一键安装：helper 先配好本仓库的 apk 源（写入 repositories.d + 公钥），
+	   然后在后台 apk add。之后的轮询、日志、错误处理都和升级共用。 */
+	async handleInstall() {
+		this.installButton.disabled = true;
+		this.checkButton.disabled = true;
+		this.packageLaunchError = null;
+		this.showPackageJob({}, _('Installing…'));
+		let previous;
+		try {
+			previous = await this.packageCommand([ 'status' ]);
+		}
+		catch (error) {
+			this.finishPackageJob(this.packageError(error), false);
+			return;
+		}
+		this.packagePreviousJob = previous.id;
+		try {
+			const status = previous.running ? previous :
+				await this.packageCommand([ 'install', this.app.name ]);
+			this.showPackageJob(status, previous.running || status.already_running ? _('An upgrade is already running.') : _('Installing…'));
+		}
+		catch (error) {
+			if (error.exitCode != null || error.name === 'PermissionError') {
+				this.finishPackageJob(this.packageError(error), false);
+				return;
+			}
+			this.packageLaunchError = error;
+		}
+		this.packagePolling = true;
+		this.packagePollFailure = null;
 	},
 
 	async handleUpgrade(packages) {
@@ -776,6 +758,8 @@ const ServiceView = view.extend({
 	finishPackageJob(nodes, reload) {
 		this.packagePolling = false;
 		this.checkButton.disabled = false;
+		if (this.installButton)
+			this.installButton.disabled = false;
 		this.packageProgress = null;
 		ui.showModal(_('Upgrade'), [ ...nodes,
 			E('div', { 'class': 'right' }, E('button', {
@@ -945,11 +929,17 @@ const ServiceView = view.extend({
 			'class': 'btn cbi-button', 'type': 'button',
 			'click': () => this.handleCheckUpdates()
 		}, _('Check for updates'));
+		this.installButton = E('button', {
+			'class': 'btn cbi-button-action', 'type': 'button',
+			'click': () => this.handleInstall()
+		}, _('Install'));
 		o = s.option(form.DummyValue, '_version', _('Version'));
 		o.renderWidget = () => E('div', {}, [
 			E('span', {}, installed.error ? _('Unable to read version: %s').format(installed.error.message)
 				: installed.find(pkg => pkg.name === name)?.version || _('Not installed')),
-			' ', this.checkButton, this.packageStatus
+			' ',
+			installed.error ? '' : (installed.some(pkg => pkg.name === name) ? this.checkButton : this.installButton),
+			this.packageStatus
 		]);
 
 		// Not a UCI option: the rc.d link of the init script, which the switch

@@ -12,6 +12,11 @@ STATE=/tmp/honk-pkg.json
 LOG=/tmp/honk-pkg.log
 RC=/tmp/honk-pkg.rc
 
+# 本仓库 CI 发布的 apk 软件源（apk 分支，按架构分目录，索引用 key/key-build.pem 签名）
+HONK_REPO_BASE=https://raw.githubusercontent.com/MinimaxFlora/luci-app-honk/apk
+HONK_REPO_FILE=/etc/apk/repositories.d/honk.list
+APK_KEYS_DIR=/etc/apk/keys
+
 fail() {
 	printf '%s\n' "$*" >&2
 	exit 1
@@ -140,9 +145,45 @@ reload_assets() {
 	"/etc/init.d/$app" reload
 }
 
+# 本仓库的 apk 源：写 /etc/apk/repositories.d/honk.list，并把签名公钥放进
+# /etc/apk/keys。之后 apk 的 update / add / upgrade 都走它自己的签名校验。
+repo_setup() {
+	REPO_ARCH=$(sed -n "s/^DISTRIB_ARCH='\(.*\)'/\1/p" /etc/openwrt_release 2>/dev/null | head -n 1)
+	[ -n "$REPO_ARCH" ] || fail 'Unable to detect the device architecture.'
+	REPO_URL="$HONK_REPO_BASE/$REPO_ARCH/packages.adb"
+
+	mkdir -p "$APK_KEYS_DIR" "$(dirname "$HONK_REPO_FILE")" ||
+		fail 'Unable to create the apk directories.'
+	printf '%s\n' "$REPO_URL" > "$HONK_REPO_FILE" ||
+		fail "Unable to write $HONK_REPO_FILE."
+
+	REPO_SIGNED=0
+	pem="$APK_KEYS_DIR/honk.pem"
+	if [ -s "$pem" ]; then
+		REPO_SIGNED=1
+	elif wget -q -T 20 -O "$pem.tmp" "$HONK_REPO_BASE/key-build.pem" 2>/dev/null &&
+		grep -q 'BEGIN PUBLIC KEY' "$pem.tmp"; then
+		mv -f "$pem.tmp" "$pem" && REPO_SIGNED=1
+	else
+		# 公钥拿不到就当未签名源，apk 会报 UNTRUSTED，check 里的 warning 会带出来
+		rm -f "$pem.tmp"
+	fi
+}
+
+source_info() {
+	repo_setup || exit 1
+	json_init
+	json_add_string arch "$REPO_ARCH"
+	json_add_string url "$REPO_URL"
+	json_add_boolean signed "$REPO_SIGNED"
+	json_add_string file "$HONK_REPO_FILE"
+	json_dump
+}
+
 upgrade() {
-	app=$1
-	shift
+	action=$1
+	app=$2
+	shift 2
 	exec 9>>"$LOCK" || fail 'Unable to open the package lock.'
 	if ! flock -n 9; then
 		exec 9>&-
@@ -150,9 +191,17 @@ upgrade() {
 		return
 	fi
 
-	before=$(query_installed "$@") || fail 'Unable to query installed packages.'
-	load_json "{\"before\":$before}" || fail 'Invalid apk query response.'
+	if [ "$action" = install ]; then
+		# 还没装，没有 before 可查
+		json_init
+		json_add_array before
+		json_close_array
+	else
+		before=$(query_installed "$@") || fail 'Unable to query installed packages.'
+		load_json "{\"before\":$before}" || fail 'Invalid apk query response.'
+	fi
 	json_add_string app "$app"
+	json_add_string action "$action"
 	json_add_string id "$(date +%s)-$$"
 	json_add_array packages
 	for package in "$@"; do
@@ -175,8 +224,21 @@ upgrade() {
 	# so another tab cannot start a transaction while this worker is alive.
 	(
 		trap '' HUP
-		/usr/bin/apk --interactive=no --progress=no upgrade "$@"
-		code=$?
+		code=0
+		if [ "$action" = install ]; then
+			/usr/bin/apk --interactive=no --progress=no update || code=$?
+			if [ "$code" -eq 0 ]; then
+				if [ "$REPO_SIGNED" = 1 ]; then
+					/usr/bin/apk --interactive=no --progress=no add "$@"
+				else
+					/usr/bin/apk --interactive=no --progress=no add --allow-untrusted "$@"
+				fi
+				code=$?
+			fi
+		else
+			/usr/bin/apk --interactive=no --progress=no upgrade "$@"
+			code=$?
+		fi
 		[ "$code" -ne 0 ] || reload_assets "$app" "$@"
 		write_result "$code"
 	) </dev/null >>"$LOG" 2>&1 &
@@ -210,11 +272,25 @@ case "$command" in
 		for package in "$@"; do
 			valid_package "$package" || fail 'Invalid package.'
 			case "$seen" in
-				*" $package "*) fail 'Duplicate package.' ;;
+				*" $package "*) fail 'Duplicate package' ;;
 			esac
 			seen="$seen$package "
 		done
-		upgrade "$app" "$@"
+		upgrade upgrade "$app" "$@"
+		;;
+	source)
+		[ "$#" -eq 0 ] || fail 'Source takes no arguments.'
+		source_info
+		;;
+	install)
+		# 一键安装：配好本仓库的 apk 源，然后后台 apk add，前端轮询 status
+		[ "$#" -eq 1 ] || fail 'Exactly one application is required.'
+		valid_app "$1" || fail 'Invalid application.'
+		app=$1
+		repo_setup || fail 'Unable to set up the package source.'
+		set -- "$app" "luci-app-$app" \
+			luci-i18n-$app-zh-cn luci-i18n-$app-zh-tw
+		upgrade install "$app" "$@"
 		;;
 	status)
 		[ "$#" -eq 0 ] || fail 'Status takes no arguments.'
