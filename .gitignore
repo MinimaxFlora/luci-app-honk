@@ -1,0 +1,12 @@
+# 上游源码，由工作流在编译前 clone 进来
+honk/src/
+
+# 签名私钥只在 CI 里从 secret 还原，绝不入库
+keys/private-key.pem
+keys/public-key.pem
+
+# 编译产物
+dist/
+*.ipk
+*.apk
+.work/

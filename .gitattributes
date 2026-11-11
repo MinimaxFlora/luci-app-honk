@@ -1,0 +1,6 @@
+# 在 Windows 上编辑也要保证仓库里是 LF：shell 脚本带 CRLF 在路由器上跑不起来
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.ico binary

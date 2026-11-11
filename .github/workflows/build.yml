@@ -1,0 +1,304 @@
+# 用 ubuntu 26.04 的 runner 编译本 feed 的三个包，同时产出 ipk 和 apk：
+#
+#   honk            honk-core（Rust + eBPF，内嵌 doona 面板）
+#   luci-app-honk   LuCI 页面和它的中文翻译（架构无关）
+#   vmlinux-btf     按 target 内核生成的 BTF，包版本就是内核版本
+#
+# apk 用 OpenWrt 25.12.x 的 SDK，ipk 用 24.10.x 的 SDK：两种包格式来自两个
+# 不同的包管理器，SDK 不通用。矩阵是 (格式 × 架构)，由 plan 作业按输入算出来，
+# 一个 job 下一次 SDK，把三个包都编出来。
+#
+# 每个包都从一个只放它自己的临时 feed 目录编译：这样 OpenWrt 不会顺着 DEPENDS
+# 把同仓库的另一个包（比如 honk → vmlinux-btf）一起拉进来编。
+#
+# GitHub Actions 工作流。
+# runs-on: ubuntu-26.04 用的是 GitHub 托管的 26.04 镜像；如果这个标签还没上线，
+# 换成 ubuntu-latest 或 ubuntu-24.04。
+name: build
+
+on:
+  push:
+    branches: [ main, master ]
+    tags: [ 'v*' ]
+  workflow_dispatch:
+    inputs:
+      honk_ref:
+        description: 'honk 上游 tag（例如 v0.1.0-beta.6）'
+        required: false
+        default: 'v0.1.0-beta.6'
+      apk_version:
+        description: 'apk 用的 OpenWrt 版本（25.12.x）'
+        required: false
+        default: '25.12.6'
+      ipk_version:
+        description: 'ipk 用的 OpenWrt 版本（24.10.x）'
+        required: false
+        default: '24.10.8'
+      formats:
+        description: '要构建的格式，逗号分隔：apk / ipk / apk,ipk'
+        required: false
+        default: 'apk,ipk'
+      arches:
+        description: '要构建的架构，逗号分隔；all 表示全部'
+        required: false
+        default: 'all'
+
+jobs:
+  # (格式 × 架构) 组合要能按输入裁剪，而 GitHub 不允许在 job 级 if 里引用 matrix，
+  # 所以先在一个作业里算出矩阵，再用 fromJSON 交给 build
+  plan:
+    name: 规划构建矩阵
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - name: 计算要构建的 (格式, 架构) 组合
+        id: plan
+        env:
+          FORMATS_IN: ${{ inputs.formats }}
+          ARCHES_IN: ${{ inputs.arches }}
+        run: |
+          set -eu
+          matrix="$(python3 - "${FORMATS_IN:-apk,ipk}" "${ARCHES_IN:-all}" <<'PY'
+          import json
+          import sys
+
+          # OpenWrt arch -> (target, subtarget, 内核架构)
+          targets = {
+              'x86_64':             ('x86',      '64',      'x86_64'),
+              'aarch64_generic':    ('armsr',    'armv8',   'arm64'),
+              'aarch64_cortex-a53': ('mediatek', 'filogic', 'arm64'),
+              'aarch64_cortex-a72': ('bcm27xx',  'bcm2711', 'arm64'),
+              'aarch64_cortex-a76': ('bcm27xx',  'bcm2712', 'arm64'),
+          }
+
+          formats = [f.strip() for f in sys.argv[1].split(',') if f.strip()]
+          arches = [a.strip() for a in sys.argv[2].split(',') if a.strip()]
+          if not formats or any(f not in ('apk', 'ipk') for f in formats):
+              sys.exit('formats 只能是 apk / ipk，收到：%s' % sys.argv[1])
+          if 'all' in arches:
+              arches = list(targets)
+          for arch in arches:
+              if arch not in targets:
+                  sys.exit('未知架构 %s，可选：%s' % (arch, ', '.join(targets)))
+
+          include = []
+          for fmt in formats:
+              for arch in arches:
+                  target, subtarget, kernel_arch = targets[arch]
+                  include.append({
+                      'format': fmt,
+                      'openwrt_arch': arch,
+                      'openwrt_target': target,
+                      'openwrt_subtarget': subtarget,
+                      'kernel_arch': kernel_arch,
+                  })
+          print(json.dumps({'include': include}))
+          PY
+          )"
+          echo "$matrix" | python3 -c 'import json,sys; print("组合:", ", ".join(i["format"]+"/"+i["openwrt_arch"] for i in json.load(sys.stdin)["include"]))'
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: ${{ matrix.format }} · ${{ matrix.openwrt_arch }}
+    needs: plan
+    runs-on: ubuntu-26.04
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    env:
+      FORMAT: ${{ matrix.format }}
+      OPENWRT_TARGET: ${{ matrix.openwrt_target }}
+      OPENWRT_SUBTARGET: ${{ matrix.openwrt_subtarget }}
+      OPENWRT_ARCH: ${{ matrix.openwrt_arch }}
+      KERNEL_ARCH: ${{ matrix.kernel_arch }}
+    steps:
+      - name: 检出本仓库（feed）
+        uses: actions/checkout@v4
+        with:
+          # luci.mk 用最后一次改动包目录的 commit 算版本号，浅克隆会把它算成当前 commit
+          fetch-depth: 0
+
+      - name: 解析版本号
+        env:
+          HONK_REF_IN: ${{ inputs.honk_ref }}
+          APK_VERSION_IN: ${{ inputs.apk_version }}
+          IPK_VERSION_IN: ${{ inputs.ipk_version }}
+        run: |
+          set -eu
+          ref="${HONK_REF_IN:-v0.1.0-beta.6}"
+          if [ "$FORMAT" = "apk" ]; then
+            ver="${APK_VERSION_IN:-25.12.6}"
+          else
+            ver="${IPK_VERSION_IN:-24.10.8}"
+          fi
+          # v0.1.0-beta.6 -> 0.1.0_beta6：apk/opkg 的版本号里 "-" 后面跟 commit
+          # 会被当成预发布后缀，所以上游用 _beta 拼版本号
+          pkgver="$(printf '%s' "$ref" | sed -e 's/^v//' -e 's/-beta\./_beta/' -e 's/-/_/g')"
+
+          echo "格式: ${FORMAT}，OpenWrt ${ver}，honk ${ref}（包版本 ${pkgver}）"
+          {
+            echo "OPENWRT_VERSION=${ver}"
+            echo "HONK_REF=${ref}"
+            echo "HONK_VERSION=${pkgver}"
+          } >> "$GITHUB_ENV"
+
+      - name: 安装构建依赖
+        run: |
+          sudo apt-get update
+          # dwarves 提供 pahole（BTF 编码），clang/libclang 供 bindgen，
+          # 其余是 SDK 的 make 和 honk 的 CMake / BoringSSL 需要的
+          sudo apt-get install -y --no-install-recommends \
+            build-essential bzip2 ca-certificates clang cmake curl dwarves file gawk git \
+            libbpf-dev libclang-dev llvm openssl pkg-config python3 rsync unzip xz-utils zstd
+
+      - name: 下载并解压 OpenWrt SDK
+        run: bash scripts/fetch-openwrt-sdk.sh
+
+      - name: 准备 honk 源码和本地 feed
+        run: |
+          set -eu
+          feed="$RUNNER_TEMP/feed"
+          mkdir -p "$feed/honk"
+          cp -a honk/Makefile honk/build.sh honk/files "$feed/honk/"
+          # 上游源码不进本仓库，编译前拉到包目录的 src 下（Makefile 就找那里）
+          git clone --quiet --depth 1 --branch "$HONK_REF" \
+            https://github.com/daeuniverse/honk "$feed/honk/src"
+          git -C "$feed/honk/src" log -1 --oneline
+          {
+            echo "FEED_DIR=${feed}"
+            echo "HONK_SRC_DIR=${feed}/honk/src"
+          } >> "$GITHUB_ENV"
+
+      - name: 安装 honk 需要的 Rust 工具链
+        run: |
+          set -eu
+          # 两个 toolchain 版本都由 honk 自己钉在 rust-toolchain.toml 里
+          stable="$(sed -n 's/^channel *= *"\([^"]*\)".*/\1/p' "$HONK_SRC_DIR/rust-toolchain.toml")"
+          ebpf="$(sed -n 's/^channel *= *"\([^"]*\)".*/\1/p' "$HONK_SRC_DIR/crates/honk-ebpf/rust-toolchain.toml")"
+          case "$OPENWRT_ARCH" in
+            x86_64)   target=x86_64-unknown-linux-musl ;;
+            aarch64*) target=aarch64-unknown-linux-musl ;;
+            *)        echo "::error::不支持的架构 ${OPENWRT_ARCH}"; exit 1 ;;
+          esac
+
+          if [ -f "$HOME/.cargo/env" ]; then
+            . "$HOME/.cargo/env"
+          fi
+          if ! command -v rustup >/dev/null 2>&1; then
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+              | sh -s -- -y --default-toolchain none --profile minimal
+            . "$HOME/.cargo/env"
+          fi
+          rustup toolchain install "$stable" --profile minimal --target "$target"
+          rustup toolchain install "$ebpf" --profile minimal --component rust-src --component llvm-tools
+
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          echo "stable=${stable} ebpf=${ebpf} target=${target}"
+
+      - name: 安装钉住版本的 bpf-linker
+        run: |
+          set -eu
+          . "$HONK_SRC_DIR/.github/ci/pins.env"
+          tmp="$(mktemp -d)"
+          curl -fsSL --retry 3 -o "$tmp/bpf-linker.tar.zst" \
+            "https://github.com/aya-rs/bpf-linker/releases/download/v${BPF_LINKER_VERSION}/bpf-linker-x86_64-unknown-linux-musl.tar.zst"
+          echo "${BPF_LINKER_SHA256}  $tmp/bpf-linker.tar.zst" | sha256sum -c -
+          mkdir -p "$HOME/.cargo/bin"
+          zstd -dc "$tmp/bpf-linker.tar.zst" | tar -xf - -C "$HOME/.cargo/bin"
+          bpf-linker --version
+
+      - name: 编译 honk
+        run: |
+          set -eu
+          cd "$SDK_DIR"
+          printf 'src-link local %s\n' "$FEED_DIR" > feeds.conf
+          ./scripts/feeds update local
+          ./scripts/feeds install -p local honk
+
+          echo 'CONFIG_PACKAGE_honk=m' >> .config
+          make defconfig
+
+          HONK_VERSION="$HONK_VERSION" HONK_GIT_TAG="$HONK_REF" \
+            make package/honk/compile V=s
+
+      - name: 生成 BTF 并打包 vmlinux-btf
+        run: |
+          set -eu
+          bash scripts/build-btf.sh
+          . "$RUNNER_TEMP/btf/vars"
+
+          cp -a vmlinux-btf "$FEED_DIR/vmlinux-btf"
+          cd "$SDK_DIR"
+          ./scripts/feeds update local
+          ./scripts/feeds install -p local vmlinux-btf
+
+          echo 'CONFIG_PACKAGE_vmlinux-btf=m' >> .config
+          make defconfig
+
+          # 包版本就是内核版本，vmlinux-<release> 软链接用 UTS_RELEASE
+          VMLINUX_BTF_VERSION="$KERNEL_VERSION" \
+          VMLINUX_BTF_KERNEL_RELEASE="$KERNEL_RELEASE" \
+          VMLINUX_BTF_SRC="$RUNNER_TEMP/btf/vmlinux" \
+            make package/vmlinux-btf/compile V=s
+
+      - name: 编译 luci-app-honk 和翻译
+        run: |
+          set -eu
+          # 单独一个 feed：这里不能有 honk，否则它的 kmod 依赖会把整个内核拉进来编
+          luci_feed="$RUNNER_TEMP/feed-luci"
+          rm -rf "$luci_feed"
+          mkdir -p "$luci_feed"
+          cp -a luci-app-honk "$luci_feed/"
+
+          cd "$SDK_DIR"
+          {
+            grep -E '^src-git (--root=package )?(base|luci) ' feeds.conf.default
+            printf 'src-link local %s\n' "$luci_feed"
+          } > feeds.conf
+          ./scripts/feeds update base luci local
+          # po2lmo、jsmin 这些主机工具只有把 luci-base 装进 package 树才会编
+          ./scripts/feeds install -p luci luci-base
+          ./scripts/feeds install -p local luci-app-honk
+
+          rm -f .config
+          make defconfig
+
+          # 翻译包和 luci-app-honk 由同一个 Makefile 定义，编这个目录就会一起出来；
+          # 它们默认只按固件语言选择，所以在命令行上显式打开
+          make package/luci-app-honk/compile V=s \
+               CONFIG_PACKAGE_luci-app-honk=m \
+               CONFIG_PACKAGE_luci-i18n-honk-zh-cn=m \
+               CONFIG_PACKAGE_luci-i18n-honk-zh-tw=m
+
+      - name: 给 apk 签名（可选）
+        env:
+          APK_PRIVATE_KEY: ${{ secrets.APK_PRIVATE_KEY }}
+        run: |
+          set -eu
+          if [ "$FORMAT" != "apk" ]; then
+            echo "ipk 没有签名机制，跳过"
+            exit 0
+          fi
+          bash scripts/sign-apk.sh
+
+      - name: 收集产物
+        run: |
+          set -eu
+          mkdir -p dist
+          find "$SDK_DIR/bin/packages" -path '*/local/*' -type f \
+            \( -name '*.apk' -o -name '*.ipk' \) -exec cp -v -t dist {} +
+          cd dist
+          sha256sum * > SHA256SUMS
+          echo "---- SHA256SUMS ----"
+          cat SHA256SUMS
+
+      - name: 上传产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: packages-${{ matrix.format }}-${{ matrix.openwrt_arch }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 30
