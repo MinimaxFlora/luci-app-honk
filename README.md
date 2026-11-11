@@ -8,7 +8,7 @@ feed，可以直接 `src-link` 到 OpenWrt SDK 里编译。
 |---|---|---|
 | [`honk/`](honk) | `honk` | `/usr/bin/honk-core`（eBPF 透明代理引擎，内嵌 doona 面板）、procd init 脚本、`/etc/config/honk`、`/etc/honk/config.dae` |
 | [`luci-app-honk/`](luci-app-honk) | `luci-app-honk` + `luci-i18n-honk-zh-cn` / `-zh-tw` | LuCI 页面（服务状态、带语法高亮的配置编辑器、日志、软件更新）、菜单项、ACL、中文翻译 |
-| [`vmlinux-btf/`](vmlinux-btf) | `vmlinux-btf` | `/usr/lib/debug/boot/vmlinux`（CO-RE 用的 BTF 数据），包版本就是内核版本 |
+| [`vmlinux-btf/`](vmlinux-btf) | `vmlinux-btf` | `/usr/lib/debug/boot/vmlinux`（CO-RE 用的 BTF 数据），包版本就是内核版本；整机编译时由包自己从内核头文件生成 |
 
 CI 在 `ubuntu-26.04` 上跑，同时产出两种包格式：**ipk**（OpenWrt 24.10 / opkg）和
 **apk**（OpenWrt 25.12 / apk-tools 3），覆盖 x86_64 和四种 aarch64 架构。
@@ -20,8 +20,9 @@ CI 在 `ubuntu-26.04` 上跑，同时产出两种包格式：**ipk**（OpenWrt 2
 ├── .github/workflows/build.yml  # CI：ipk + apk
 ├── honk/                        # 包 honk：Makefile + build.sh + files/
 ├── luci-app-honk/               # 包 luci-app-honk：页面、翻译、honk-pkg 助手
-├── vmlinux-btf/                 # 包 vmlinux-btf：Makefile 只打包外部给的 BTF 文件，
-│   └── src/                     # shadow_btf_*.c，生成 BTF 用
+├── vmlinux-btf/                 # 包 vmlinux-btf：Makefile 从内核头文件生成 BTF（整机编译），
+│   ├── src/                     # 也接受外部给的 blob（SDK/CI 用）；src/ 是 shadow_btf_*.c
+│   └── check-btf.sh             # 校验产物是不是合法 BTF
 └── scripts/
     ├── fetch-openwrt-sdk.sh     # 按版本/target 找 SDK，官方源失败换镜像，sha256 校验
     ├── build-btf.sh             # 用 SDK 的内核头文件生成 BTF
@@ -59,17 +60,13 @@ git clone --depth 1 --branch v0.1.0-beta.6 https://github.com/daeuniverse/honk h
 每个 job 的产物是一组 `.ipk`/`.apk` 加 `SHA256SUMS-<格式>-<架构>`，作为 artifact
 上传，名字是 `packages-<格式>-<架构>`。
 
-推 `v*` tag（例如 `v0.1.0-beta.6`）会把这轮的 10 个产物合成一个 Release：tag 就是
-版本号，工作流会核对它和这次编译用的 `honk_ref` 对得上（允许 `v0.1.0-beta.6-r2`
-这种重发后缀）。手动触发时填 `release_tag` 也能发。
-
 几点说明：
 
 * `runs-on: ubuntu-26.04` 用的是 GitHub 托管的 26.04 镜像；如果这个标签还没上线，
   换成 `ubuntu-latest`（`plan` 和 `build` 各有一处）。
 * 三个包各自从一个**只放它自己的临时 feed 目录**编译。这是有意的：整个仓库作为
   feed 时，`luci-app-honk → honk → vmlinux-btf` 这条 DEPENDS 链会把别的包甚至整个
-  内核一起拉进来编，而 `vmlinux-btf` 在拿到 BTF 文件之前根本编不了。
+  内核拉进来编；而 CI 里只编包，`vmlinux-btf` 走 `VMLINUX_BTF_SRC` 那条路。
 * honk 是 Rust + eBPF，需要 honk 自己钉的 stable 和 nightly（带 `rust-src`）
   两个工具链，以及 `.github/ci/pins.env` 里钉的 `bpf-linker`，工作流会自动装。
 * 编译很吃时间：单架构 Rust 编译通常 20 分钟以上，10 个 job 会排队，按需用
@@ -108,10 +105,53 @@ feed，并 `feeds install -p luci luci-base`（`po2lmo`、`jsmin` 这些主机�
 luci-base 进了 package 树才会编），然后 `make package/luci-app-honk/compile` 一次
 编出 app 和两个翻译包。
 
-`vmlinux-btf` 需要一个 BTF 文件：`bash scripts/build-btf.sh`（需要 `SDK_DIR`、
-`KERNEL_ARCH`、`OPENWRT_ARCH`、`RUNNER_TEMP`），再把 `$RUNNER_TEMP/btf/vmlinux`
-通过 `VMLINUX_BTF_SRC` 传给 `make package/vmlinux-btf/compile`，版本用
-`VMLINUX_BTF_VERSION=<内核版本>`、`VMLINUX_BTF_KERNEL_RELEASE=<uname -r>`。
+`vmlinux-btf` 的 BTF 从哪来，见下一节。
+
+## BTF 从哪来
+
+BTF 只描述**某一个内核**的结构体布局，所以它必须跟着编它的那棵内核树走。`vmlinux-btf`
+两种用法：
+
+* **整机编译**（把 honk 编进固件）：什么都不用准备。包的 `Build/Compile` 用
+  `$(LINUX_DIR)` 里已经配好的内核头文件和 `$(TARGET_CC)`，把 `src/shadow_btf_*.c`
+  编成 DWARF，再用宿主机的 `pahole` 编码成 BTF。宿主机要有 dwarves：
+
+  ```sh
+  sudo apt install dwarves        # Debian/Ubuntu，提供 pahole
+  ```
+
+  包版本取内核版本，`EXTRA_DEPENDS` 把内核版本锁死（和 kmod 一样），换个点版本或
+  target 都装不上，免得 CO-RE 读到错误的结构体布局。
+* **只编包**（SDK / CI）：SDK 里带着完整的 kernel tree，所以
+  `make package/vmlinux-btf/compile` 也能走上面那条路；CI 为了控制版本，先用
+  `bash scripts/build-btf.sh`（需要 `SDK_DIR`、`KERNEL_ARCH`、`OPENWRT_ARCH`、
+  `RUNNER_TEMP`）生成 blob，再通过 `VMLINUX_BTF_SRC=<blob>` 交给包，版本用
+  `VMLINUX_BTF_VERSION=<内核版本>`、`VMLINUX_BTF_KERNEL_RELEASE=<uname -r>`。
+
+## 编进自己的 OpenWrt 固件
+
+```sh
+cd ~/openwrt
+# 仓库根目录就是 feed
+echo "src-link honk $HOME/luci-app-honk" >> feeds.conf.default
+./scripts/feeds update honk
+./scripts/feeds install -a -p honk
+
+make menuconfig      # Network → honk，LuCI → Applications → luci-app-honk
+                     # 勾 honk 会自己带出 vmlinux-btf
+sudo apt install dwarves     # pahole，编 BTF 用
+make -j$(nproc) V=s
+```
+
+`honk/src` 得先放好（包的 Makefile 只在本地找源码，不联网）：
+
+```sh
+git clone --depth 1 --branch v0.1.0-beta.6 https://github.com/daeuniverse/honk honk/src
+```
+
+honk 本体要 Rust：`rustup`、crate 里钉的 stable 与 nightly（带 `rust-src`）、
+以及 `.github/ci/pins.env` 里钉的 `bpf-linker`，`honk/build.sh` 会在编译时检查并按
+需要安装，编 honk 之前请保证构建机能联网。
 
 ## 安装
 
