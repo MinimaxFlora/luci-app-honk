@@ -44,8 +44,8 @@ on:
         default: 'all'
 
 jobs:
-  # (格式 × 架构) 组合要能按输入裁剪，而 GitHub 不允许在 job 级 if 里引用 matrix，
-  # 所以先在一个作业里算出矩阵，再用 fromJSON 交给 build
+  # (格式 × 架构) 组合要能按输入裁剪，而 GitHub 不允许在 job 级
+  # if 里引用 matrix，所以先在一个作业里算出矩阵，再用 fromJSON 交给 build
   plan:
     name: 规划构建矩阵
     runs-on: ubuntu-26.04
@@ -254,11 +254,20 @@ jobs:
           cp -a luci-app-honk "$luci_feed/"
 
           cd "$SDK_DIR"
+          # 24.10 的 feeds.conf.default 用 src-git-full 引 base（openwrt.git，提供
+          # rpcd、ucode、liblua…），25.12 是 src-git --root=package base，两种都认
           {
-            grep -E '^src-git (--root=package )?(base|luci) ' feeds.conf.default
+            grep -E '^src-git(-full)? (--root=[^ ]+ )?(base|luci) ' feeds.conf.default
             printf 'src-link local %s\n' "$luci_feed"
           } > feeds.conf
-          ./scripts/feeds update base luci local
+          feeds=""
+          for f in base luci; do
+            if grep -qE "^src-git(-full)? (--root=[^ ]+ )?${f} " feeds.conf.default; then
+              feeds="$feeds $f"
+            fi
+          done
+          # shellcheck disable=SC2086 # feeds 是有意拼成参数列表的
+          ./scripts/feeds update $feeds local
           # po2lmo、jsmin 这些主机工具只有把 luci-base 装进 package 树才会编
           ./scripts/feeds install -p luci luci-base
           ./scripts/feeds install -p local luci-app-honk
