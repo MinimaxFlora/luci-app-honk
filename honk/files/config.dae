@@ -3,8 +3,10 @@
 #
 # This file only provides a working skeleton: add your nodes or subscriptions
 # and routing rules before enabling the service, and adjust the interfaces for
-# the device. It intentionally routes everything directly so that enabling the
-# service does not break connectivity before a proxy is configured.
+# the device. Routing falls back to direct, so enabling the service does not
+# break connectivity; DNS does split: 国内域名查 223.5.5.5，国外域名经 dns 里的
+# remote_dns（8.8.8.8，走 proxy 组）。proxy 组里没有节点时国外域名解析不了，
+# 先加节点再启用。
 #
 # Interfaces: br-lan is the default OpenWrt LAN bridge; `auto` follows the
 # interface of the IPv4 default route. Set lan_interface to your LAN device
@@ -40,22 +42,36 @@ global {
 
 dns {
     upstream {
-        # dnsmasq on the router; honk sends its own DNS lookups there.
-        local: 'udp://127.0.0.1:53'
+        # 国内域名走阿里 DNS 直连
+        local: 'udp://223.5.5.5:53'
+        # 国外域名走 Google DNS，且这个上游本身经 proxy 组出去
+        remote_dns: 'tcp+udp://8.8.8.8:53' -> proxy
     }
     routing {
         request {
+            # 不在 geolocation-!cn（即国内）里的域名交给 remote_dns
+            qname(geosite: geolocation-!cn) -> remote_dns
             fallback: local
         }
         response {
-            fallback: local
+            # remote_dns 的答复直接接受，其余（local 的）也接受
+            upstream(remote_dns) -> accept
+            fallback: accept
         }
     }
 }
 
 routing {
-    # Start with everything direct; add proxy groups and rules above this
-    # fallback once nodes are configured.
+    group {
+        # dns.remote_dns 引用了这个组名。把节点加进来，例如
+        #   'socks5://user:pass@127.0.0.1:1080'
+        #   'ss://...' / 'trojan://...' / subscription('https://...')
+        # 一个节点都没有时这个组是空的，代理也就没有出口。
+        proxy {
+        }
+    }
+    # Start with everything direct; add rules above this fallback once nodes are
+    # configured.
     fallback: direct
 }
 

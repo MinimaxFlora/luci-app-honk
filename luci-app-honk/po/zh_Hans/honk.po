@@ -233,3 +233,19 @@ msgstr "dae 和 honk 不能同时运行，已先停止 %s。"
 
 msgid "%s did not stop, the service was not started."
 msgstr "%s 未能停止，服务未启动。"
+
+msgid "The package index could not be refreshed, so updates cannot be confirmed."
+msgstr "软件包索引未能刷新，无法确认是否有更新。"
+
+msgid "Could not check GitHub releases: %s"
+msgstr "无法检查 GitHub 发布：%s"
+
+msgid "The GitHub release %s matches the installed version."
+msgstr "GitHub 最新发布 %s 与已安装版本一致。"
+
+msgid "Newer release on GitHub: %s. "
+msgstr "GitHub 有更新的发布：%s。"
+
+msgid "Open the release page"
+msgstr "打开发布页"
+
