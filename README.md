@@ -29,8 +29,9 @@ CI 在 `ubuntu-26.04` 上跑，同时产出两种包格式：**ipk**（OpenWrt 2
     └── sign-apk.sh              # 可选：给 .apk 签名（需要 secret APK_PRIVATE_KEY）
 ```
 
-`honk/src`（honk 源码）不进 git：CI 编译前把它 clone 到一个临时 feed 目录，
-本地编译时手动放到 `honk/src`：
+`honk/src`（honk 源码）不进 git。包自己会按 `HONK_GIT_TAG` 从
+`https://github.com/daeuniverse/honk.git` 下载源码；想离线编译或钉住本地改动时，
+再手动放一份到 `honk/src`（有它就用它，不再下载）：
 
 ```sh
 git clone --depth 1 --branch v0.1.0-beta.6 https://github.com/daeuniverse/honk honk/src
@@ -143,11 +144,10 @@ sudo apt install dwarves     # pahole，编 BTF 用
 make -j$(nproc) V=s
 ```
 
-`honk/src` 得先放好（包的 Makefile 只在本地找源码，不联网）：
-
-```sh
-git clone --depth 1 --branch v0.1.0-beta.6 https://github.com/daeuniverse/honk honk/src
-```
+`honk/src` 不用手动放：没有它时包会按 `HONK_GIT_TAG` 自己从
+`https://github.com/daeuniverse/honk.git` 下载（走 `PKG_SOURCE`，进 `dl/`）。
+想换版本就 `make package/honk/compile V=s HONK_GIT_TAG=v0.1.1` 这样传，
+包版本同步用 `HONK_VERSION`。
 
 honk 本体要 Rust：`rustup`、crate 里钉的 stable 与 nightly（带 `rust-src`）、
 以及 `.github/ci/pins.env` 里钉的 `bpf-linker`，`honk/build.sh` 会在编译时检查并按

@@ -1,10 +1,12 @@
 #
 # OpenWrt package: honk (https://github.com/daeuniverse/honk)
 #
-# The sources are expected next to this Makefile in ./src, which is what the
-# CI workflow checks out:
+# The sources come from ./src when it is there (the CI workflow and local
+# development check it out at that path), otherwise the package downloads the
+# upstream tag from https://github.com/daeuniverse/honk.git, so the feed can be
+# dropped into an OpenWrt tree and built with a plain make:
 #
-#   git clone https://github.com/daeuniverse/honk src
+#   git clone https://github.com/daeuniverse/honk src   # optional, offline use
 #
 # Apart from the embedded dashboard (downloaded as a release archive, never
 # compiled here), nothing is fetched while building. build.sh downloads the
@@ -49,9 +51,23 @@ PKG_LICENSE:=GPL-3.0-only
 PKG_LICENSE_FILES:=LICENSE
 PKG_BUILD_DIR:=$(BUILD_DIR)/$(PKG_NAME)-$(PKG_VERSION)
 
+# 本地 ./src（CI 会 clone 进来，本地开发也一样）优先；没有就按上游 tag 自己下载，
+# 这样把 feed 丢进 OpenWrt 源码树里直接 make 也能编。
+HONK_LOCAL_SRC:=$(firstword $(wildcard $(PKG_DIR)/src/Cargo.toml))
+
+ifneq ($(HONK_LOCAL_SRC),)
+  HONK_SRC:=$(PKG_DIR)/src
+else
+  PKG_SOURCE_PROTO:=git
+  PKG_SOURCE_URL:=https://github.com/daeuniverse/honk.git
+  PKG_SOURCE_VERSION:=$(HONK_GIT_TAG)
+  PKG_SOURCE:=$(PKG_NAME)-$(HONK_GIT_TAG).tar.gz
+  PKG_MIRROR_HASH:=skip
+  HONK_SRC:=$(PKG_BUILD_DIR)
+endif
+
 include $(INCLUDE_DIR)/package.mk
 
-HONK_SRC:=$(PKG_DIR)/src
 
 define Package/honk
   SECTION:=net
@@ -78,15 +94,13 @@ define Package/honk/description
  (native-ui), which is served at /ui on the native API listener.
 endef
 
+# 有本地源码才需要这一步拷贝；交给 PKG_SOURCE 时 package.mk 的默认 prepare 负责解包
+ifneq ($(HONK_LOCAL_SRC),)
 define Build/Prepare
-	@if [ ! -d "$(HONK_SRC)" ]; then \
-		echo "honk: the source tree is missing at $(HONK_SRC)"; \
-		echo "honk: run 'git clone https://github.com/daeuniverse/honk src' in $(PKG_DIR)"; \
-		exit 1; \
-	fi
 	mkdir -p $(PKG_BUILD_DIR)
 	$(CP) $(HONK_SRC)/. $(PKG_BUILD_DIR)/
 endef
+endif
 
 define Build/Compile
 	HONK_SRC="$(PKG_BUILD_DIR)" \
