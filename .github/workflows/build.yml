@@ -147,10 +147,37 @@ jobs:
 
       - name: 安装构建依赖
         run: |
-          sudo apt-get update
+          set -euo pipefail
+          export DEBIAN_FRONTEND=noninteractive
+          APT_OPTS="-o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20"
+
+          apt_retry() {
+            for i in 1 2 3 4 5; do
+              "$@" && return 0
+              echo "::warning::第 $i 次失败，10 秒后重试：$*"
+              sleep 10
+            done
+            return 1
+          }
+
+          # GitHub 托管 runner 在 Azure 里，默认源是 security.ubuntu.com，偶发 DNS 抽风
+          # （Temporary failure resolving）会把整步拖死十分钟后失败。默认源重试几次还不通，
+          # 就换成 Azure 的镜像再来。
+          if ! apt_retry sudo -E apt-get $APT_OPTS update; then
+            echo "::warning::默认源不通，换 azure.archive.ubuntu.com"
+            if [ -f /etc/apt/apt-mirrors.txt ]; then
+              echo 'http://azure.archive.ubuntu.com/ubuntu/' | sudo tee /etc/apt/apt-mirrors.txt >/dev/null
+            fi
+            for f in /etc/apt/sources.list /etc/apt/sources.list.d/*.sources; do
+              [ -f "$f" ] || continue
+              sudo sed -i -E 's#https?://(security\.|)(archive\.)?ubuntu\.com#http://azure.archive.ubuntu.com#g' "$f" || true
+            done
+            apt_retry sudo -E apt-get $APT_OPTS update
+          fi
+
           # dwarves 提供 pahole（BTF 编码），clang/libclang 供 bindgen，
           # 其余是 SDK 的 make 和 honk 的 CMake / BoringSSL 需要的
-          sudo apt-get install -y --no-install-recommends \
+          apt_retry sudo -E apt-get $APT_OPTS install -y --no-install-recommends \
             build-essential bzip2 ca-certificates clang cmake curl dwarves file gawk git \
             libbpf-dev libclang-dev llvm openssl pkg-config python3 rsync unzip xz-utils zstd
 
