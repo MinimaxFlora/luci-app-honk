@@ -2,7 +2,7 @@
 # OpenWrt package: honk (https://github.com/daeuniverse/honk)
 #
 # The sources are expected next to this Makefile in ./src, which is what the
-# Gitea workflow checks out:
+# CI workflow checks out:
 #
 #   git clone https://github.com/daeuniverse/honk src
 #

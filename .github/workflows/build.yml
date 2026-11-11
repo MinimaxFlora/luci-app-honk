@@ -116,7 +116,7 @@ jobs:
       KERNEL_ARCH: ${{ matrix.kernel_arch }}
     steps:
       - name: 检出本仓库（feed）
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           # luci.mk 用最后一次改动包目录的 commit 算版本号，浅克隆会把它算成当前 commit
           fetch-depth: 0
@@ -314,7 +314,7 @@ jobs:
           cat "SHA256SUMS-${FORMAT}-${OPENWRT_ARCH}"
 
       - name: 上传产物
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: packages-${{ matrix.format }}-${{ matrix.openwrt_arch }}
           path: dist/*
