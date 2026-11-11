@@ -375,10 +375,11 @@ jobs:
           \`apk add --allow-untrusted\`。
           EOF
 
-          if gh release view "$TAG" >/dev/null 2>&1; then
+          # 这个 job 不 checkout，gh 没有 git 仓库可推断，所有调用都显式给 --repo
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "Release ${TAG} 已存在，覆盖资产"
           else
-            gh release create "$TAG" --target "$GITHUB_SHA" --title "$TAG" --notes-file notes.md
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "$TAG" --notes-file notes.md
           fi
-          gh release upload "$TAG" dist/* --clobber
-          gh release view "$TAG" --json tagName,url --jq '"\(.tagName) -> \(.url)"'
+          gh release upload "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --clobber
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json tagName,url --jq '"\(.tagName) -> \(.url)"'
