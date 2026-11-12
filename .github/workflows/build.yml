@@ -146,11 +146,19 @@ jobs:
           # 会被当成预发布后缀，所以上游用 _beta 拼版本号
           pkgver="$(printf '%s' "$ref" | sed -e 's/^v//' -e 's/-beta\./_beta/' -e 's/-/_/g')"
 
-          echo "格式: ${FORMAT}，OpenWrt ${ver}，honk ${ref}（包版本 ${pkgver}）"
+          # luci.mk 在有 .git 时用 <yy>.<年内第几天>.<当天秒数>~<sha7> 当版本，
+          # 固件里编进去的就是这种（26.315.48366~2b0dd94）。CI 的临时 feed 目录没有
+          # .git，会退回 0.<YYYYMMDD>.<秒> —— 比固件里的版本小，apk 就永远认为我们的
+          # 包是降级、也就永远检测不到更新。所以这里按同一格式从提交时间算一遍。
+          ts=$(git log -1 --format=%ct)
+          luci_ver="$(date -u --date="@$ts" '+%y.%j').$(printf '%05d' $((ts % 86400)))~$(git rev-parse --short=7 HEAD)"
+
+          echo "格式: ${FORMAT}，OpenWrt ${ver}，honk ${ref}（包版本 ${pkgver}），luci ${luci_ver}"
           {
             echo "OPENWRT_VERSION=${ver}"
             echo "HONK_REF=${ref}"
             echo "HONK_VERSION=${pkgver}"
+            echo "LUCI_APP_VERSION=${luci_ver}"
           } >> "$GITHUB_ENV"
 
       - name: 安装构建依赖
@@ -312,7 +320,7 @@ jobs:
 
           # 翻译包和 luci-app-honk 由同一个 Makefile 定义，编这个目录就会一起出来；
           # 它们默认只按固件语言选择，所以在命令行上显式打开
-          LUCI_APP_VERSION="$HONK_VERSION" \
+          LUCI_APP_VERSION="$LUCI_APP_VERSION" \
           make package/luci-app-honk/compile V=s \
                CONFIG_PACKAGE_luci-app-honk=m \
                CONFIG_PACKAGE_luci-i18n-honk-zh-cn=m \
