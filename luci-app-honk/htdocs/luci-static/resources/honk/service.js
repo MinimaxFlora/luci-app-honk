@@ -8,6 +8,7 @@
 'require rpc';
 'require request';
 'require poll';
+'require honk.nativeapi as nativeApi';
 
 /*
  * The honk LuCI page, in three tabs: the
@@ -279,59 +280,9 @@ const STYLE = `
 .du-n { color: color-mix(in srgb, #c4660a 60%, currentColor); }
 .du-p { color: color-mix(in srgb, #3d7ed6 60%, currentColor); }
 /* The page buttons save the settings of the status tab only; the editor has its own. */
-body:has(.du-panes > [data-tab="status"]:not([data-tab-active="true"])) .cbi-page-actions { display: none; }
-.du-panes .right { margin: .5em 0; }
-/* 标签栏照 HomeProxy：整条白色卡片，标签是满高的块，选中的灰底 + 底部蓝线 */
-.du-page > .cbi-tabmenu {
-	background: var(--surface-color, #fff);
-	/* 照 HomeProxy 的标签条：白色底，标签四周的内边距一样（上下 = 左右），
-	   下面直接接到内容上，不留灰缝 */
-	border-radius: var(--radius-card, 12px) var(--radius-card, 12px) 0 0;
-	padding: var(--control-gap, .5rem) var(--section-inset, 1.25rem) 0;
-	margin: 0;
-	gap: 0;
-	overflow: hidden;
-	gap: 0;
-}
-.du-page > .cbi-tabmenu > li {
-	margin: 0 3px 0 0; padding: 0; border: 0;
-	border-radius: 8px 8px 0 0;          /* 圆角，别做成直角 */
-	background: transparent;
-	display: flex; align-items: center;
-	height: 52px;
-}
-.du-page > .cbi-tabmenu > li > a {
-	padding: 0 1.35rem;
-	line-height: 52px;
-	font-size: 1rem;
-	color: var(--tab-inactive-color, #5c6470);
-	border: 0;
-}
-.du-page > .cbi-tabmenu > li.cbi-tab {
-	background: var(--surface-active, #eceef6);
-	box-shadow: inset 0 -3px 0 var(--tab-color, #4a5cff);
-}
-.du-page > .cbi-tabmenu > li.cbi-tab > a {
-	color: var(--text-strong, #1f2329);
-	font-weight: 500;
-}
-/* 标签页里的卡片要撑满宽度：主题把 [data-tab-title] 设成了 flex，子元素会缩成内容宽 */
-.du-panes > [data-tab-title] { flex-direction: column; }
-.du-panes > [data-tab-title] > * { width: 100%; min-width: 0; }
-/* 页头只在“服务状态”标签显示，别的标签页和 HomeProxy 一样没有页头 */
-.du-panes:has(> [data-tab="status"]:not([data-tab-active="true"])) > .cbi-map { display: none; }
-.du-panes > .cbi-map > h2 { margin-top: 0; }
-/* 卡片之间留出和主题一致的间隙，别贴在一起 */
-.du-panes { display: flex; flex-direction: column; gap: var(--section-gap, 1rem); }
-/* 标签页里面不要再套一层卡片：外层 [data-tab-title] 已经是白卡片了，
-   里层 .cbi-section 再带一遍阴影就变成「框里套框」 */
-.du-panes > [data-tab-title] .cbi-section {
-	box-shadow: none;
-	background: transparent;
-	border-radius: 0;
-}
-/* 卡片上下也要留白：主题给的 [data-tab-title] padding 是 0，第一行和最后一行会贴边 */
-.du-panes > [data-tab-title] { padding: var(--field-gap, .6rem) 0; }
+/* 配置页和日志页没有表单，别显示“保存并应用 / 保存 / 重置”那一栏 */
+body[data-page="admin-services-honk-config"] .cbi-page-actions,
+body[data-page="admin-services-honk-log"] .cbi-page-actions { display: none; }
 /* 检测结果跟在按钮后面，不换行占一整行 */
 .du-pkg-status { display: inline; margin-left: .6em; }
 .cbi-value:has(.du-web-ui:empty) { display: none; }
@@ -403,6 +354,99 @@ function logLevelClass(entry) {
 	const severity = (entry.priority ?? 6) & 7;
 	return severity <= 3 ? 'du-error' : severity === 4 ? 'du-warn' : '';
 }
+
+const callLanAddress = rpc.declare({
+	object: 'uci',
+	method: 'get',
+	params: [ 'config', 'section', 'option' ],
+	expect: { '': {} }
+});
+
+function isIp(host) {
+	if (/^\d+\.\d+\.\d+\.\d+$/.test(host))
+		return host.split('.').every(part => Number(part) <= 255);
+	if (!host.includes(':'))
+		return false;
+	try {
+		return new URL('http://[' + host + ']/').hostname !== '';
+	}
+	catch (_) {
+		return false;
+	}
+}
+
+async function webUi(files) {
+	for (const file of files) {
+		const body = nativeApi.body(file.text ?? '');
+		if (body == null)
+			continue;
+		const value = key => {
+			const match = new RegExp('(?:^|[\\s;,])' + key + '\\s*:\\s*(?:\'([^\']*)\'|"([^"]*)"|([^\\s;,]+))').exec(body);
+			return match ? (match[1] ?? match[2] ?? match[3]) : '';
+		};
+		if (value('enabled') !== 'true' || !value('ui'))
+			return null;
+		const listen = /^(?:\[([^\]]+)\]|(.+)):(\d+)$/.exec(value('listen'));
+		if (!listen || Number(listen[3]) < 1 || Number(listen[3]) > 65535)
+			return null;
+		let host = listen[1] ?? listen[2];
+		if (!isIp(host))
+			return null;
+		const port = listen[3];
+		const luciHost = window.location.hostname.replace(/^\[|\]$/g, '');
+		if (host.startsWith('127.') || host === '::1') {
+			const destination = host.includes(':') ? '[' + host + ']' : host;
+			return { note: E('span', {}, [
+				_('doona listens on %s; open it through an SSH tunnel:').format(host),
+				' ',
+				E('code', {}, 'ssh -L ' + port + ':' + destination + ':' + port + ' root@' + luciHost),
+				E('br'),
+				_('To open it from the LAN instead, set %s and restart honk.').format('listen: \'0.0.0.0:' + port + '\'')
+			]) };
+		}
+		let note;
+		if (host === '0.0.0.0' || host === '::') {
+			host = luciHost;
+			if (!isIp(host)) {
+				const reply = await L.resolveDefault(callLanAddress('network', 'lan', 'ipaddr'), {});
+				const address = reply.value ?? '';
+				const lan = (Array.isArray(address) ? address[0] ?? '' : address).split('/')[0];
+				if (isIp(lan) && !lan.includes(':'))
+					host = lan;
+				else
+					note = _('honk only accepts IP addresses; open LuCI by IP address.');
+			}
+		}
+		return { url: 'http://' + (host.includes(':') ? '[' + host + ']' : host) + ':' + port + '/', note };
+	}
+	return null;
+}
+
+const honkApp = {
+		name: 'honk',
+		title: 'Honk',
+		webUi,
+		// Both create dae0/daens and hook the same interfaces: only one may run.
+		other: 'dae',
+		defaultConfig: '/etc/honk/config.dae',
+		// honk-core has no offline check; a broken file is reported in the log.
+		validate: null,
+		// honk-core has no switch for the native API either: its block in the
+		// configuration is the single source of truth.
+		webUiFlag: {
+			read: files => nativeApi.isEnabled(files),
+			path: files => nativeApi.targetPath(files),
+			write: (text, on) => nativeApi.apply(text, on)
+		},
+		// honk-core takes the store as a command-line flag, so it is a UCI option
+		// of the init script, not a line of the configuration.
+		storeFlag: {
+			dataDir: '/etc/honk/data',
+			problems: (files, dataDir) => nativeApi.storeProblems(files, dataDir)
+		},
+		// procd forwards stdout as "honk-core[pid]:", the init script logs as "honk:".
+		logIdent: /^honk(-core)?(\[\d+\])?: /
+};
 
 const ServiceView = view.extend({
 	app: null,
@@ -826,7 +870,7 @@ const ServiceView = view.extend({
 		return isRunning(name).then(running => {
 			const state = running ? _('Running') : _('Not running');
 			// HomeProxy 的写法：<em><span style="color:red"><strong>名字 (版本) 状态</strong></span></em>
-			const line = document.getElementById(name + '-hero-line');
+			const line = document.getElementById(name + '-status-line');
 			if (line) {
 				const color = running ? 'green' : 'red';
 				const text = 'Honk (' + (this.heroVersion || _('Not installed')) + ') ' + state;
@@ -959,7 +1003,8 @@ const ServiceView = view.extend({
 	},
 
 	async render([ entry, files, installed, bootEnabled ]) {
-		const { name, defaultConfig } = this.app;
+		const { name } = this.app;
+		const tab = this.app.tab || 'status';
 
 		document.head.appendChild(E('style', {}, STYLE));
 
@@ -969,21 +1014,28 @@ const ServiceView = view.extend({
 		this.logBox = E('pre', { 'class': 'du-log' });
 		this.setFiles(files);
 
-		// 照 HomeProxy 的 DOM：cbi-map > h2 + cbi-map-descr，状态单独放一个 cbi-section。
-		// 注意 hero 必须放在 panes 里面（不能夹在 tabmenu 和 panes 之间），
-		// 否则 ui.tabs.switchTab() 取 menu.nextElementSibling 拿到的就不是 panes 了。
-		const installedVersion = installed.error ? null
-			: installed.find(pkg => pkg.name === name)?.version || null;
-		this.heroVersion = installedVersion;
-		const hero = E('div', { 'class': 'cbi-map' }, [
-			E('h2', { 'name': 'content' }, 'Honk'),
-			E('div', { 'class': 'cbi-map-descr' },
-				'基于 Rust 与 eBPF 的新一代 Linux 高性能透明代理引擎。'),
-			E('div', { 'class': 'cbi-section', 'id': name + '-hero' },
-				E('p', { 'id': name + '-hero-line' }, '…'))
-		]);
+		// 和 HomeProxy 一样：每个标签是独立的菜单页，标签条由 LuCI 自己渲染
+		if (tab === 'config')
+			return this.renderConfigPage();
+		if (tab === 'log')
+			return this.renderLogPage();
+		return this.renderStatusPage(files, installed, bootEnabled);
+	},
 
-		const m = new form.Map(name);
+	/* 服务状态页：form.Map 的标题和简介 + 状态行 + 各项设置 */
+	renderStatusPage(files, installed, bootEnabled) {
+		const { name, defaultConfig } = this.app;
+		this.heroVersion = installed.error ? null
+			: installed.find(pkg => pkg.name === name)?.version || null;
+
+		const m = new form.Map(name, 'Honk',
+			'基于 Rust 与 eBPF 的新一代 Linux 高性能透明代理引擎。');
+
+		// 运行状态单独一个 section，和 HomeProxy 的 service_status 一样
+		const st = m.section(form.TypedSection);
+		st.render = () => E('div', { 'class': 'cbi-section' },
+			E('p', { 'id': name + '-status-line' }, '…'));
+
 		const s = m.section(form.NamedSection, 'config', name);
 		s.anonymous = true;
 
@@ -1080,66 +1132,61 @@ const ServiceView = view.extend({
 		return m.render().then(async mapNode => {
 			if (webUi)
 				await this.updateWebUi(files);
-
-			const logPane = E('div', { 'data-tab': 'log', 'data-tab-title': _('Log') }, [
-				E('div', { 'class': 'cbi-section' }, [
-					E('div', { 'class': 'right' }, E('button', {
-						'class': 'btn cbi-button',
-						'click': ui.createHandlerFn(this, 'updateLog')
-					}, _('Refresh'))),
-					this.logBox
-				])
-			]);
-
-			const panes = E('div', { 'class': 'du-panes' }, [
-				// hero 放在 panes 里当第一个子节点：它没有 data-tab，切标签时一直显示
-				hero,
-				E('div', { 'data-tab': 'status', 'data-tab-title': _('Service status') }, mapNode),
-				E('div', { 'data-tab': 'config', 'data-tab-title': _('Configuration') }, [
-					E('div', { 'class': 'cbi-section' }, [
-						E('p', { 'class': 'cbi-section-descr' },
-							_('Edit the configuration file and every file it includes; each tab is saved to its own file.')),
-						this.fileTabs,
-						this.editorBox,
-						E('div', { 'class': 'right' }, [
-							E('button', {
-								'class': 'btn cbi-button',
-								'click': ui.createHandlerFn(this, 'handleRescan')
-							}, _('Re-read includes')),
-							' ',
-							E('button', {
-								'class': 'btn cbi-button cbi-button-save',
-								'click': ui.createHandlerFn(this, 'handleSaveFiles')
-							}, _('Save files'))
-						])
-					])
-				]),
-				logPane
-			]);
-
-			// The log is only fetched while its tab is shown; jump to its end when it opens.
-			logPane.addEventListener('cbi-tab-active', () =>
-				this.updateLog().then(() => { this.logBox.scrollTop = this.logBox.scrollHeight; }));
-			poll.add(() => Promise.all([
-				this.updateStatus(),
-				this.updateBoot(),
-				logPane.getAttribute('data-tab-active') === 'true' ? this.updateLog() : null
-			]), 5);
-
-			// 根节点用 .cbi-map：主题按它来排版（flex 列 + section-gap），标签栏才不至于贴边
-			const page = E('div', { 'class': 'cbi-map du-page' }, [ panes ]);
-			// 只把真正的标签页交给 initTabGroup（panes[0] 必须是带 data-tab 的节点，
-			// 它会把 tabmenu 插到 panes 前面，switchTab 靠 menu.nextElementSibling 找 panes）
-			ui.tabs.initTabGroup(panes.querySelectorAll(':scope > [data-tab]'));
+			poll.add(() => Promise.all([ this.updateStatus(), this.updateBoot() ]), 5);
 			this.updateStatus();
 			this.packagePolling = true;
-			// 立刻查一次，别让"检查更新"按钮要等第一次轮询之后才可点
+			// 立刻查一次，别让“检查更新”按钮要等第一次轮询之后才可点
 			this.pollPackageJob();
 			poll.add(() => this.pollPackageJob(), 2);
-			return page;
+			return mapNode;
+		});
+	},
+
+	/* 配置页 */
+	renderConfigPage() {
+		const m = new form.Map(this.app.name, _('Configuration'),
+			_('Edit the configuration file and every file it includes; each tab is saved to its own file.'));
+		const s = m.section(form.TypedSection);
+		s.render = () => E('div', { 'class': 'cbi-section' }, [
+			this.fileTabs,
+			this.editorBox,
+			E('div', { 'class': 'right' }, [
+				E('button', {
+					'class': 'btn cbi-button',
+					'click': ui.createHandlerFn(this, 'handleRescan')
+				}, _('Re-read includes')),
+				' ',
+				E('button', {
+					'class': 'btn cbi-button cbi-button-save',
+					'click': ui.createHandlerFn(this, 'handleSaveFiles')
+				}, _('Save files'))
+			])
+		]);
+		// 这一页有自己的“保存文件”按钮，不要再出现表单的保存栏
+		return m.render().then(node => { node.querySelector('.cbi-page-actions')?.remove(); return node; });
+	},
+
+	/* 日志页 */
+	renderLogPage() {
+		const m = new form.Map(this.app.name, _('Log'));
+		const s = m.section(form.TypedSection);
+		s.render = () => E('div', { 'class': 'cbi-section' }, [
+			E('div', { 'class': 'right' }, E('button', {
+				'class': 'btn cbi-button',
+				'click': ui.createHandlerFn(this, 'updateLog')
+			}, _('Refresh'))),
+			this.logBox
+		]);
+		return m.render().then(node => {
+			node.querySelector('.cbi-page-actions')?.remove();
+			this.updateLog().then(() => { this.logBox.scrollTop = this.logBox.scrollHeight; });
+			poll.add(() => this.updateLog(), 5);
+			return node;
 		});
 	}
 });
 
 // LuCI instantiates the class a module returns, so the view is a member.
+ServiceView.app = honkApp;
+
 return baseclass.extend({ View: ServiceView });
