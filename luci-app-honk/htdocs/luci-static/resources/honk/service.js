@@ -281,13 +281,40 @@ const STYLE = `
 /* The page buttons save the settings of the status tab only; the editor has its own. */
 body:has(.du-panes > [data-tab="status"]:not([data-tab-active="true"])) .cbi-page-actions { display: none; }
 .du-panes .right { margin: .5em 0; }
-/* 标签栏照 HomeProxy：整条白色卡片，标签放在里面 */
+/* 标签栏照 HomeProxy：整条白色卡片，标签是满高的块，选中的灰底 + 底部蓝线 */
 .du-page > .cbi-tabmenu {
 	background: var(--surface-color, #fff);
-	border-radius: var(--radius-card, 12px);
-	padding: var(--control-gap, .5rem) var(--section-inset, 1.25rem) 0;
+	/* 照 HomeProxy：只有上面两个角是圆的，和内容之间留一条主题间距，
+	   不留间距的话卡片的阴影会压在白色标签栏上，接缝处出现一条深色的线 */
+	border-radius: var(--radius-card, 12px) var(--radius-card, 12px) 0 0;
+	padding: 0;
 	margin: 0 0 var(--section-gap, 1rem);
+	overflow: hidden;
+	gap: 0;
 }
+.du-page > .cbi-tabmenu > li {
+	margin: 0; padding: 0; border: 0; border-radius: 0;
+	background: transparent;
+	display: flex; align-items: center;
+	height: 46px;
+}
+.du-page > .cbi-tabmenu > li > a {
+	padding: 0 var(--section-inset, 1.25rem);
+	line-height: 46px;
+	color: var(--tab-inactive-color, #5c6470);
+	border: 0;
+}
+.du-page > .cbi-tabmenu > li.cbi-tab {
+	background: var(--surface-active, #eceef6);
+	box-shadow: inset 0 -3px 0 var(--tab-color, #4a5cff);
+}
+.du-page > .cbi-tabmenu > li.cbi-tab > a {
+	color: var(--text-strong, #1f2329);
+	font-weight: 500;
+}
+/* 标签页里的卡片要撑满宽度：主题把 [data-tab-title] 设成了 flex，子元素会缩成内容宽 */
+.du-panes > [data-tab-title] { flex-direction: column; }
+.du-panes > [data-tab-title] > * { width: 100%; min-width: 0; }
 /* 页头只在“服务状态”标签显示，别的标签页和 HomeProxy 一样没有页头 */
 .du-panes:has(> [data-tab="status"]:not([data-tab-active="true"])) > .cbi-map { display: none; }
 .du-panes > .cbi-map > h2 { margin-top: 0; }
@@ -788,8 +815,6 @@ const ServiceView = view.extend({
 		const { name } = this.app;
 		return isRunning(name).then(running => {
 			const state = running ? _('Running') : _('Not running');
-			document.getElementById(name + '-status')?.replaceChildren(
-				E('em', { 'class': running ? 'du-running' : 'du-stopped' }, state));
 			// HomeProxy 的写法：<em><span style="color:red"><strong>名字 (版本) 状态</strong></span></em>
 			const line = document.getElementById(name + '-hero-line');
 			if (line) {
@@ -803,11 +828,10 @@ const ServiceView = view.extend({
 		});
 	},
 
-	/* 勾选框跟着服务状态走；重启按钮只在运行时显示 */
+	/* 勾选框跟着服务状态走 */
 	showServiceButtons(running) {
 		if (this.runSwitch && this.runSwitch.checked !== running)
 			this.runSwitch.checked = running;
-		this.restartButton.style.display = running ? '' : 'none';
 	},
 
 	/* Start, stop and restart act now; Start at boot stays as it is. */
@@ -840,7 +864,7 @@ const ServiceView = view.extend({
 
 	async runServiceAction(action) {
 		const { name, other } = this.app;
-		const buttons = [ this.runSwitch, this.restartButton ];
+		const buttons = [ this.runSwitch ];
 
 		ui.hideModal();
 		buttons.forEach(button => { button.disabled = true; });
@@ -953,23 +977,14 @@ const ServiceView = view.extend({
 		const s = m.section(form.NamedSection, 'config', name);
 		s.anonymous = true;
 
-		// 勾选 = 启动，取消勾选 = 停止（和下面的“开机自动启动”一样是个勾选框）
+		// 只有勾选框：勾选 = 启动，取消勾选 = 停止（和下面的“开机自动启动”一样）
 		this.runSwitch = E('input', {
 			'type': 'checkbox', 'id': name + '-run',
 			'change': ev => ev.target.checked ? this.runServiceAction('start') : this.handleServiceAction('stop')
 		});
-		this.restartButton = E('button', {
-			'class': 'btn cbi-button', 'type': 'button', 'style': 'display: none',
-			'click': () => this.handleServiceAction('restart')
-		}, _('Restart'));
 		let o = s.option(form.DummyValue, '_status', _('Status'));
-		o.renderWidget = () => E('div', {}, [
-			E('span', { 'id': name + '-status' }, E('em', {}, '…')),
-			' ',
-			E('div', { 'class': 'cbi-checkbox', 'style': 'display:inline-block;vertical-align:middle' }, [
-				this.runSwitch, E('label', { 'for': name + '-run' })
-			]),
-			' ', this.restartButton
+		o.renderWidget = () => E('div', { 'class': 'cbi-checkbox' }, [
+			this.runSwitch, E('label', { 'for': name + '-run' })
 		]);
 
 		// 结果跟在按钮后面（和 passwall 一样），不是单独占一行
