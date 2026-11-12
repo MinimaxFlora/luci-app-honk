@@ -281,11 +281,20 @@ const STYLE = `
 /* The page buttons save the settings of the status tab only; the editor has its own. */
 body:has(.du-panes > [data-tab="status"]:not([data-tab-active="true"])) .cbi-page-actions { display: none; }
 .du-panes .right { margin: .5em 0; }
+/* 标签栏照 HomeProxy：整条白色卡片，标签放在里面 */
+.du-page > .cbi-tabmenu {
+	background: var(--surface-color, #fff);
+	border-radius: var(--radius-card, 12px);
+	padding: var(--control-gap, .5rem) var(--section-inset, 1.25rem) 0;
+	margin: 0 0 var(--section-gap, 1rem);
+}
 /* 页头只在“服务状态”标签显示，别的标签页和 HomeProxy 一样没有页头 */
 .du-panes:has(> [data-tab="status"]:not([data-tab-active="true"])) > .cbi-map { display: none; }
 .du-panes > .cbi-map > h2 { margin-top: 0; }
 /* 卡片之间留出和主题一致的间隙，别贴在一起 */
 .du-panes { display: flex; flex-direction: column; gap: var(--section-gap, 1rem); }
+/* 卡片上下也要留白：主题给的 [data-tab-title] padding 是 0，第一行和最后一行会贴边 */
+.du-panes > [data-tab-title] { padding: var(--field-gap, .6rem) 0; }
 /* 检测结果跟在按钮后面，不换行占一整行 */
 .du-pkg-status { display: inline; margin-left: .6em; }
 .cbi-value:has(.du-web-ui:empty) { display: none; }
@@ -794,13 +803,10 @@ const ServiceView = view.extend({
 		});
 	},
 
-	/* One button starts or stops, a second restarts a running service */
+	/* 勾选框跟着服务状态走；重启按钮只在运行时显示 */
 	showServiceButtons(running) {
-		const toggle = this.toggleButton;
-		toggle.style.display = '';
-		toggle.className = 'btn cbi-button ' + (running ? 'cbi-button-negative' : 'cbi-button-action');
-		toggle.textContent = running ? _('Stop') : _('Start');
-		toggle.onclick = () => this.handleServiceAction(running ? 'stop' : 'start');
+		if (this.runSwitch && this.runSwitch.checked !== running)
+			this.runSwitch.checked = running;
 		this.restartButton.style.display = running ? '' : 'none';
 	},
 
@@ -817,7 +823,12 @@ const ServiceView = view.extend({
 		ui.showModal(title, [
 			E('p', {}, question),
 			E('div', { 'class': 'right' }, [
-				E('button', { 'class': 'btn', 'click': ui.hideModal }, _('Cancel')),
+				E('button', { 'class': 'btn', 'click': () => {
+					ui.hideModal();
+					// 用户取消停止：把勾选恢复回去
+					if (action === 'stop' && this.runSwitch)
+						this.runSwitch.checked = true;
+				} }, _('Cancel')),
 				' ',
 				E('button', {
 					'class': 'btn ' + (action === 'stop' ? 'cbi-button-negative' : 'cbi-button-action'),
@@ -829,7 +840,7 @@ const ServiceView = view.extend({
 
 	async runServiceAction(action) {
 		const { name, other } = this.app;
-		const buttons = [ this.toggleButton, this.restartButton ];
+		const buttons = [ this.runSwitch, this.restartButton ];
 
 		ui.hideModal();
 		buttons.forEach(button => { button.disabled = true; });
@@ -942,7 +953,11 @@ const ServiceView = view.extend({
 		const s = m.section(form.NamedSection, 'config', name);
 		s.anonymous = true;
 
-		this.toggleButton = E('button', { 'type': 'button', 'style': 'display: none' });
+		// 勾选 = 启动，取消勾选 = 停止（和下面的“开机自动启动”一样是个勾选框）
+		this.runSwitch = E('input', {
+			'type': 'checkbox', 'id': name + '-run',
+			'change': ev => ev.target.checked ? this.runServiceAction('start') : this.handleServiceAction('stop')
+		});
 		this.restartButton = E('button', {
 			'class': 'btn cbi-button', 'type': 'button', 'style': 'display: none',
 			'click': () => this.handleServiceAction('restart')
@@ -950,7 +965,11 @@ const ServiceView = view.extend({
 		let o = s.option(form.DummyValue, '_status', _('Status'));
 		o.renderWidget = () => E('div', {}, [
 			E('span', { 'id': name + '-status' }, E('em', {}, '…')),
-			' ', this.toggleButton, ' ', this.restartButton
+			' ',
+			E('div', { 'class': 'cbi-checkbox', 'style': 'display:inline-block;vertical-align:middle' }, [
+				this.runSwitch, E('label', { 'for': name + '-run' })
+			]),
+			' ', this.restartButton
 		]);
 
 		// 结果跟在按钮后面（和 passwall 一样），不是单独占一行
@@ -1083,7 +1102,7 @@ const ServiceView = view.extend({
 			]), 5);
 
 			// 根节点用 .cbi-map：主题按它来排版（flex 列 + section-gap），标签栏才不至于贴边
-			const page = E('div', { 'class': 'cbi-map' }, [ panes ]);
+			const page = E('div', { 'class': 'cbi-map du-page' }, [ panes ]);
 			// 只把真正的标签页交给 initTabGroup（panes[0] 必须是带 data-tab 的节点，
 			// 它会把 tabmenu 插到 panes 前面，switchTab 靠 menu.nextElementSibling 找 panes）
 			ui.tabs.initTabGroup(panes.querySelectorAll(':scope > [data-tab]'));
