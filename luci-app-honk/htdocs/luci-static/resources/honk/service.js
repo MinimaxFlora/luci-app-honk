@@ -281,6 +281,13 @@ const STYLE = `
 /* The page buttons save the settings of the status tab only; the editor has its own. */
 body:has(.du-panes > [data-tab="status"]:not([data-tab-active="true"])) .cbi-page-actions { display: none; }
 .du-panes .right { margin: .5em 0; }
+/* 和 HomeProxy 一样：标签页在最上面，下面是名字、简介、运行状态 */
+.du-hero { margin: 0 0 1em; padding: .8em 1em; border: 1px solid rgba(128,128,128,.25); border-radius: 6px; }
+.du-hero h2 { margin: 0 0 .3em; padding: 0; font-size: 1.7em; font-weight: 600; line-height: 1.2; }
+.du-hero-desc { margin: 0 0 .55em; opacity: .85; }
+.du-hero-state { margin: 0; font-size: 1.05em; }
+/* 检测结果跟在按钮后面，不换行占一整行 */
+.du-pkg-status { display: inline; margin-left: .6em; }
 .cbi-value:has(.du-web-ui:empty) { display: none; }
 /* Bootstrap's warning and error colors, else Argon's: its warning text color
    (--warning itself is close to red) and --danger. A theme with neither
@@ -587,10 +594,11 @@ const ServiceView = view.extend({
 			// apk update，所以镜像上坏掉的源影响不到这里；拿不到索引会走 catch
 			const updates = result.packages.filter(pkg => installed.some(current => current.name === pkg.name));
 			if (!updates.length) {
-				this.packageStatus.replaceChildren(E('div', {}, _('Up to date')));
+				this.packageStatus.replaceChildren(E('em', { 'class': 'du-running' }, _('Up to date')));
 				return;
 			}
-			this.packageStatus.replaceChildren();
+			this.packageStatus.replaceChildren(
+				E('em', { 'class': 'du-f' }, '发现 %s 个更新'.replace('%s', updates.length)));
 			const current = Object.fromEntries(installed.map(pkg => [ pkg.name, pkg.version ]));
 			const boxes = updates.map(pkg => E('input', { 'type': 'checkbox', 'checked': true, 'value': pkg.name,
 				'change': () => { upgrade.disabled = !boxes.some(box => box.checked); } }));
@@ -770,8 +778,14 @@ const ServiceView = view.extend({
 	updateStatus() {
 		const { name } = this.app;
 		return isRunning(name).then(running => {
+			const state = running ? _('Running') : _('Not running');
 			document.getElementById(name + '-status')?.replaceChildren(
-				E('em', { 'class': running ? 'du-running' : 'du-stopped' }, running ? _('Running') : _('Not running')));
+				E('em', { 'class': running ? 'du-running' : 'du-stopped' }, state));
+			const hero = document.getElementById(name + '-hero-state');
+			if (hero) {
+				hero.textContent = state;
+				hero.className = running ? 'du-running' : 'du-stopped';
+			}
 			this.showServiceButtons(running);
 		});
 	},
@@ -896,7 +910,7 @@ const ServiceView = view.extend({
 	},
 
 	async render([ entry, files, installed, bootEnabled ]) {
-		const { name, title, defaultConfig } = this.app;
+		const { name, defaultConfig } = this.app;
 
 		document.head.appendChild(E('style', {}, STYLE));
 
@@ -905,6 +919,19 @@ const ServiceView = view.extend({
 		this.editorBox = E('div');
 		this.logBox = E('pre', { 'class': 'du-log' });
 		this.setFiles(files);
+
+		// 和 HomeProxy 一样：标签页在最上面，下面是 名字 / 简介 / 运行状态
+		const installedVersion = installed.error ? null
+			: installed.find(pkg => pkg.name === name)?.version || null;
+		const heroState = E('em', { 'id': name + '-hero-state', 'class': 'du-stopped' }, '…');
+		const hero = E('div', { 'class': 'du-hero' }, [
+			E('h2', { 'name': 'content' }, 'Honk'),
+			E('p', { 'class': 'du-hero-desc' },
+				'基于 Rust 与 eBPF 的新一代 Linux 高性能透明代理引擎。'),
+			E('p', { 'class': 'du-hero-state' }, [
+				'Honk (', installedVersion || _('Not installed'), ') ', heroState
+			])
+		]);
 
 		const m = new form.Map(name);
 		const s = m.section(form.NamedSection, 'config', name);
@@ -921,7 +948,8 @@ const ServiceView = view.extend({
 			' ', this.toggleButton, ' ', this.restartButton
 		]);
 
-		this.packageStatus = E('div', { 'aria-live': 'polite' });
+		// 结果跟在按钮后面（和 passwall 一样），不是单独占一行
+		this.packageStatus = E('span', { 'class': 'du-pkg-status', 'aria-live': 'polite' });
 		this.checkButton = E('button', {
 			'class': 'btn cbi-button', 'type': 'button',
 			'click': () => this.handleCheckUpdates()
@@ -1047,11 +1075,18 @@ const ServiceView = view.extend({
 				logPane.getAttribute('data-tab-active') === 'true' ? this.updateLog() : null
 			]), 5);
 
-			const page = E('div', {}, [ E('h2', { 'name': 'content' }, title), panes ]);
+			const page = E('div', {}, [ panes ]);
 			ui.tabs.initTabGroup(panes.childNodes);
+			// 标签栏是 initTabGroup 插进去的第一个子节点，hero 紧跟在它后面
+			const tabMenu = panes.querySelector(':scope > ul.cbi-tabmenu');
+			if (tabMenu)
+				panes.insertBefore(hero, tabMenu.nextSibling);
+			else
+				panes.insertBefore(hero, panes.firstChild);
 			this.updateStatus();
 			this.packagePolling = true;
-			this.checkButton.disabled = true;
+			// 立刻查一次，别让"检查更新"按钮要等第一次轮询之后才可点
+			this.pollPackageJob();
 			poll.add(() => this.pollPackageJob(), 2);
 			return page;
 		});

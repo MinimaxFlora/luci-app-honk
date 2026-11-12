@@ -175,20 +175,38 @@ https://raw.githubusercontent.com/MinimaxFlora/luci-app-honk/ipk/<arch>/Packages
 - 没配对应 secret 时索引是未签名的，客户端要关掉校验（apk：`--allow-untrusted`，
   opkg：不装公钥或 `option check_signature 0`）
 
-LuCI 页面里的“检查更新”不碰系统包索引：helper 直接下载本仓库软件源里的
-`<arch>/index.json`，用 `apk version -t` 和已装版本比较。OpenWrt 镜像上某个源坏掉
-（比如 `video/packages.adb` 被截断）不会影响结果，也不会出现“索引更新失败”这种噪音。
+LuCI 页面里的“检查更新”和 passwall 的 `luci_update` 是一个思路，都不碰系统包索引：
+
+1. 查 `https://api.github.com/repos/MinimaxFlora/luci-app-honk/releases/latest`
+2. 拿 `tag_name` 当整套的版本，和已装的 `luci-app-honk` 比；再按资产文件名逐个比每个包
+3. 只列真正有更新的包，页面显示当前版本 → 新版本
+
+版本比较是 helper 自己实现的 `version_cmp`（归一化后逐段比），因为 `apk version -t`
+不接受带 `-` 的版本串（返回 1 且不输出）。GitHub 上资产名里的 `~` 会被换成 `.`，
+归一化之后两边算相等，不会误报。
+
+点“更新”时和 passwall 一样：把 release 里对应架构的 `.apk` 下到临时目录，再
+
+```sh
+apk add --allow-untrusted /tmp/honk-update.XXXX/*.apk
+```
+
+这样只依赖 GitHub，不需要任何软件源参与，镜像坏没坏都无关。`vmlinux-btf` 锁内核，
+不参与自动更新（版本和内核绑死，装错内核会直接拒绝）。
+
+墙内直连 api.github.com 常常不通，可以给 helper 配代理（和 passwall 的 GitHub Proxy 一样）：
+
+```sh
+uci set honk.config.gh_proxy='https://gh-proxy.org/'
+uci commit honk
+```
 
 “一键安装”（包没装时显示）做三件事：
 
 1. 按 `/etc/openwrt_release` 的 `DISTRIB_ARCH` 算出架构，写
-   `/etc/apk/repositories.d/honk.list` 指向上面那个索引
+   `/etc/apk/repositories.d/honk.list` 指向签名源（装依赖时 apk 从这里和系统源解析）
 2. 把 `key-build.pem` 下到 `/etc/apk/keys/honk.pem`
-3. 后台跑 `apk update` + `apk add honk luci-app-honk luci-i18n-honk-zh-cn luci-i18n-honk-zh-tw`，
-   页面轮询日志，装完刷新
-
-装好之后“检查更新”就是普通的 `apk update` + `apk query --upgradable`，走的还是 apk 自己的签名校验。
-`vmlinux-btf` 也在同一个源里，它锁内核版本，内核不匹配 apk 会直接拒绝安装。
+3. 后台下载 release 里的 `.apk` 并安装，页面轮询日志，装完刷新
 
 ## 安装
 
