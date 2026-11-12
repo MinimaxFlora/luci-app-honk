@@ -984,7 +984,7 @@ const ServiceView = view.extend({
 		let o = s.option(form.Flag, 'enabled', _('Enable'));
 		o.default = '0';
 		o.rmempty = false;
-		o.description = _('Checked: the service runs. Unchecked: it is stopped. Takes effect after Save & Apply.');
+		o.description = '勾选表示运行，取消表示停止；点“保存并应用”后生效。';
 
 		// 结果跟在按钮后面（和 passwall 一样），不是单独占一行
 		this.packageStatus = E('span', { 'class': 'du-pkg-status', 'aria-live': 'polite' });

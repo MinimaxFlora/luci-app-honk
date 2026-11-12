@@ -1,37 +1,33 @@
 msgid ""
 msgstr "Content-Type: text/plain; charset=UTF-8"
 
-#: htdocs/luci-static/resources/honk/service.js:472
+#: htdocs/luci-static/resources/honk/service.js:462
 msgid "(new)"
 msgstr ""
 
-#: htdocs/luci-static/resources/honk/service.js:730
-#: htdocs/luci-static/resources/honk/service.js:759
-#: htdocs/luci-static/resources/honk/service.js:784
+#: htdocs/luci-static/resources/honk/service.js:720
+#: htdocs/luci-static/resources/honk/service.js:749
+#: htdocs/luci-static/resources/honk/service.js:774
 msgid "An upgrade is already running."
 msgstr ""
 
-#: htdocs/luci-static/resources/honk/service.js:691
+#: htdocs/luci-static/resources/honk/service.js:681
 msgid "Cancel"
 msgstr ""
 
-#: htdocs/luci-static/resources/honk/service.js:1002
+#: htdocs/luci-static/resources/honk/service.js:994
 msgid "Check for updates"
 msgstr ""
 
-#: htdocs/luci-static/resources/honk/service.js:995
-msgid "Checked: the service runs. Unchecked: it is stopped. Takes effect after Save & Apply."
-msgstr ""
-
-#: htdocs/luci-static/resources/honk/service.js:661
+#: htdocs/luci-static/resources/honk/service.js:651
 msgid "Checking for updates…"
 msgstr ""
 
-#: htdocs/luci-static/resources/honk/service.js:1140
+#: htdocs/luci-static/resources/honk/service.js:1132
 msgid "Clear"
 msgstr ""
 
-#: htdocs/luci-static/resources/honk/service.js:846
+#: htdocs/luci-static/resources/honk/service.js:836
 msgid "Close"
 msgstr ""
 
@@ -39,31 +35,31 @@ msgstr ""
 msgid "Config Settings"
 msgstr ""
 
-#: htdocs/luci-static/resources/honk/service.js:1092
+#: htdocs/luci-static/resources/honk/service.js:1084
 msgid "Configuration"
 msgstr ""
 
-#: htdocs/luci-static/resources/honk/service.js:1029
+#: htdocs/luci-static/resources/honk/service.js:1021
 msgid "Configuration file"
 msgstr ""
 
-#: htdocs/luci-static/resources/honk/service.js:555
+#: htdocs/luci-static/resources/honk/service.js:545
 msgid "Configuration is invalid, the service was not reloaded"
 msgstr ""
 
-#: htdocs/luci-static/resources/honk/service.js:1145
+#: htdocs/luci-static/resources/honk/service.js:1137
 msgid "Download"
 msgstr ""
 
-#: htdocs/luci-static/resources/honk/service.js:1093
+#: htdocs/luci-static/resources/honk/service.js:1085
 msgid "Edit the configuration file and every file it includes; each tab is saved to its own file."
 msgstr ""
 
-#: htdocs/luci-static/resources/honk/service.js:992
+#: htdocs/luci-static/resources/honk/service.js:984
 msgid "Enable"
 msgstr ""
 
-#: htdocs/luci-static/resources/honk/service.js:1041
+#: htdocs/luci-static/resources/honk/service.js:1033
 msgid "Enable the doona web UI"
 msgstr ""
 
@@ -71,60 +67,60 @@ msgstr ""
 msgid "Honk"
 msgstr ""
 
-#: htdocs/luci-static/resources/honk/service.js:1006
+#: htdocs/luci-static/resources/honk/service.js:998
 msgid "Install"
 msgstr ""
 
-#: htdocs/luci-static/resources/honk/service.js:717
-#: htdocs/luci-static/resources/honk/service.js:730
+#: htdocs/luci-static/resources/honk/service.js:707
+#: htdocs/luci-static/resources/honk/service.js:720
 msgid "Installing…"
 msgstr ""
 
-#: htdocs/luci-static/resources/honk/service.js:1055
+#: htdocs/luci-static/resources/honk/service.js:1047
 msgid "Keep the configuration in a database"
 msgstr ""
 
-#: htdocs/luci-static/resources/honk/service.js:1056
+#: htdocs/luci-static/resources/honk/service.js:1048
 msgid "Lets doona import the configuration and keep a revision history. honk then reads the database, not the configuration file. Saving restarts honk."
 msgstr ""
 
-#: htdocs/luci-static/resources/honk/service.js:1117
+#: htdocs/luci-static/resources/honk/service.js:1109
 #: menu.d/luci-app-honk.json
 msgid "Log"
 msgstr ""
 
-#: htdocs/luci-static/resources/honk/service.js:1035
+#: htdocs/luci-static/resources/honk/service.js:1027
 msgid "Must be a file in %s"
 msgstr ""
 
-#: htdocs/luci-static/resources/honk/service.js:934
+#: htdocs/luci-static/resources/honk/service.js:923
 msgid "No log entries."
 msgstr ""
 
-#: htdocs/luci-static/resources/honk/service.js:1010
-#: htdocs/luci-static/resources/honk/service.js:666
-#: htdocs/luci-static/resources/honk/service.js:860
+#: htdocs/luci-static/resources/honk/service.js:1002
+#: htdocs/luci-static/resources/honk/service.js:656
+#: htdocs/luci-static/resources/honk/service.js:850
 msgid "Not installed"
 msgstr ""
 
-#: htdocs/luci-static/resources/honk/service.js:855
+#: htdocs/luci-static/resources/honk/service.js:845
 msgid "Not running"
 msgstr ""
 
-#: htdocs/luci-static/resources/honk/service.js:871
+#: htdocs/luci-static/resources/honk/service.js:861
 msgid "Open Web Interface"
 msgstr ""
 
-#: htdocs/luci-static/resources/honk/service.js:1124
-#: htdocs/luci-static/resources/honk/service.js:1126
+#: htdocs/luci-static/resources/honk/service.js:1116
+#: htdocs/luci-static/resources/honk/service.js:1118
 msgid "Pause"
 msgstr ""
 
-#: htdocs/luci-static/resources/honk/service.js:1102
+#: htdocs/luci-static/resources/honk/service.js:1094
 msgid "Re-read includes"
 msgstr ""
 
-#: htdocs/luci-static/resources/honk/service.js:1135
+#: htdocs/luci-static/resources/honk/service.js:1127
 msgid "Refresh"
 msgstr ""
 
@@ -132,43 +128,43 @@ msgstr ""
 msgid "Remove experimental.clash_api.external_controller."
 msgstr ""
 
-#: htdocs/luci-static/resources/honk/service.js:1124
+#: htdocs/luci-static/resources/honk/service.js:1116
 msgid "Resume"
 msgstr ""
 
-#: htdocs/luci-static/resources/honk/service.js:855
+#: htdocs/luci-static/resources/honk/service.js:845
 msgid "Running"
 msgstr ""
 
-#: htdocs/luci-static/resources/honk/service.js:1108
+#: htdocs/luci-static/resources/honk/service.js:1100
 msgid "Save files"
 msgstr ""
 
-#: htdocs/luci-static/resources/honk/service.js:573
+#: htdocs/luci-static/resources/honk/service.js:563
 msgid "Save or discard the unsaved changes of %s first"
 msgstr ""
 
-#: htdocs/luci-static/resources/honk/service.js:546
+#: htdocs/luci-static/resources/honk/service.js:536
 msgid "Saved"
 msgstr ""
 
-#: htdocs/luci-static/resources/honk/service.js:564
+#: htdocs/luci-static/resources/honk/service.js:554
 msgid "Saved, but the service could not be reloaded: %s"
 msgstr ""
 
-#: htdocs/luci-static/resources/honk/service.js:597
+#: htdocs/luci-static/resources/honk/service.js:587
 msgid "Saved, but the service could not be restarted: %s"
 msgstr ""
 
-#: htdocs/luci-static/resources/honk/service.js:560
+#: htdocs/luci-static/resources/honk/service.js:550
 msgid "Saved, the service is reloading"
 msgstr ""
 
-#: htdocs/luci-static/resources/honk/service.js:594
+#: htdocs/luci-static/resources/honk/service.js:584
 msgid "Saved, the service is restarting"
 msgstr ""
 
-#: htdocs/luci-static/resources/honk/service.js:684
+#: htdocs/luci-static/resources/honk/service.js:674
 msgid "Select the packages to upgrade:"
 msgstr ""
 
@@ -188,91 +184,91 @@ msgstr ""
 msgid "Set global.data_dir to %s."
 msgstr ""
 
-#: htdocs/luci-static/resources/honk/service.js:1023
+#: htdocs/luci-static/resources/honk/service.js:1015
 msgid "Start at boot"
 msgstr ""
 
-#: htdocs/luci-static/resources/honk/service.js:912
+#: htdocs/luci-static/resources/honk/service.js:901
 msgid "Start at boot is off"
 msgstr ""
 
-#: htdocs/luci-static/resources/honk/service.js:912
+#: htdocs/luci-static/resources/honk/service.js:901
 msgid "Start at boot is on"
 msgstr ""
 
-#: htdocs/luci-static/resources/honk/service.js:911
+#: htdocs/luci-static/resources/honk/service.js:900
 msgid "Start at boot is on; %s no longer starts at boot, because dae and honk cannot run at the same time."
 msgstr ""
 
-#: htdocs/luci-static/resources/honk/service.js:1024
+#: htdocs/luci-static/resources/honk/service.js:1016
 msgid "Starts automatically when the router boots; does not change whether it is running now."
 msgstr ""
 
-#: htdocs/luci-static/resources/honk/service.js:806
+#: htdocs/luci-static/resources/honk/service.js:796
 msgid "These packages were not upgraded: %s"
 msgstr ""
 
-#: htdocs/luci-static/resources/honk/service.js:643
+#: htdocs/luci-static/resources/honk/service.js:633
 msgid "To use this feed's version, run %s; other packages can be added to the same command."
 msgstr ""
 
-#: htdocs/luci-static/resources/honk/service.js:915
+#: htdocs/luci-static/resources/honk/service.js:904
 msgid "Unable to change Start at boot: %s"
 msgstr ""
 
-#: htdocs/luci-static/resources/honk/service.js:457
+#: htdocs/luci-static/resources/honk/service.js:447
 msgid "Unable to read %s: %s"
 msgstr ""
 
-#: htdocs/luci-static/resources/honk/service.js:831
+#: htdocs/luci-static/resources/honk/service.js:821
 msgid "Unable to read upgrade status. The job may still be running; reload to reconnect."
 msgstr ""
 
-#: htdocs/luci-static/resources/honk/service.js:1009
+#: htdocs/luci-static/resources/honk/service.js:1001
 msgid "Unable to read version: %s"
 msgstr ""
 
-#: htdocs/luci-static/resources/honk/service.js:537
+#: htdocs/luci-static/resources/honk/service.js:527
 msgid "Unable to save: %s"
 msgstr ""
 
-#: htdocs/luci-static/resources/honk/service.js:1042
+#: htdocs/luci-static/resources/honk/service.js:1034
 msgid "Unchecked, honk runs without the native API and doona. Saving restarts honk."
 msgstr ""
 
-#: htdocs/luci-static/resources/honk/service.js:671
+#: htdocs/luci-static/resources/honk/service.js:661
 msgid "Up to date"
 msgstr ""
 
-#: htdocs/luci-static/resources/honk/service.js:682
-#: htdocs/luci-static/resources/honk/service.js:683
-#: htdocs/luci-static/resources/honk/service.js:708
-#: htdocs/luci-static/resources/honk/service.js:843
+#: htdocs/luci-static/resources/honk/service.js:672
+#: htdocs/luci-static/resources/honk/service.js:673
+#: htdocs/luci-static/resources/honk/service.js:698
+#: htdocs/luci-static/resources/honk/service.js:833
 msgid "Upgrade"
 msgstr ""
 
-#: htdocs/luci-static/resources/honk/service.js:808
+#: htdocs/luci-static/resources/honk/service.js:798
 msgid "Upgrade complete."
 msgstr ""
 
-#: htdocs/luci-static/resources/honk/service.js:689
+#: htdocs/luci-static/resources/honk/service.js:679
 msgid "Upgrading %s restarts the service and interrupts connections for a few seconds; upgrading only the other packages reloads it. Continue?"
 msgstr ""
 
-#: htdocs/luci-static/resources/honk/service.js:707
-#: htdocs/luci-static/resources/honk/service.js:786
+#: htdocs/luci-static/resources/honk/service.js:697
+#: htdocs/luci-static/resources/honk/service.js:776
 msgid "Upgrading…"
 msgstr ""
 
-#: htdocs/luci-static/resources/honk/service.js:1007
+#: htdocs/luci-static/resources/honk/service.js:999
 msgid "Version"
 msgstr ""
 
-#: htdocs/luci-static/resources/honk/service.js:827
+#: htdocs/luci-static/resources/honk/service.js:817
 msgid "Waiting for the package manager to reconnect…"
 msgstr ""
 
-#: htdocs/luci-static/resources/honk/service.js:627
-#: htdocs/luci-static/resources/honk/service.js:792
+#: htdocs/luci-static/resources/honk/service.js:617
+#: htdocs/luci-static/resources/honk/service.js:782
 msgid "apk exited with code %s."
 msgstr ""

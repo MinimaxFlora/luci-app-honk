@@ -6,37 +6,33 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
-#: htdocs/luci-static/resources/honk/service.js:472
+#: htdocs/luci-static/resources/honk/service.js:462
 msgid "(new)"
 msgstr "（新檔案）"
 
-#: htdocs/luci-static/resources/honk/service.js:730
-#: htdocs/luci-static/resources/honk/service.js:759
-#: htdocs/luci-static/resources/honk/service.js:784
+#: htdocs/luci-static/resources/honk/service.js:720
+#: htdocs/luci-static/resources/honk/service.js:749
+#: htdocs/luci-static/resources/honk/service.js:774
 msgid "An upgrade is already running."
 msgstr "已有升級工作正在執行。"
 
-#: htdocs/luci-static/resources/honk/service.js:691
+#: htdocs/luci-static/resources/honk/service.js:681
 msgid "Cancel"
 msgstr "取消"
 
-#: htdocs/luci-static/resources/honk/service.js:1002
+#: htdocs/luci-static/resources/honk/service.js:994
 msgid "Check for updates"
 msgstr "檢查更新"
 
-#: htdocs/luci-static/resources/honk/service.js:995
-msgid "Checked: the service runs. Unchecked: it is stopped. Takes effect after Save & Apply."
-msgstr "勾選表示執行，取消表示停止；點「儲存並套用」後生效。"
-
-#: htdocs/luci-static/resources/honk/service.js:661
+#: htdocs/luci-static/resources/honk/service.js:651
 msgid "Checking for updates…"
 msgstr "正在檢查更新…"
 
-#: htdocs/luci-static/resources/honk/service.js:1140
+#: htdocs/luci-static/resources/honk/service.js:1132
 msgid "Clear"
 msgstr "清空"
 
-#: htdocs/luci-static/resources/honk/service.js:846
+#: htdocs/luci-static/resources/honk/service.js:836
 msgid "Close"
 msgstr "關閉"
 
@@ -44,31 +40,31 @@ msgstr "關閉"
 msgid "Config Settings"
 msgstr "配置設定"
 
-#: htdocs/luci-static/resources/honk/service.js:1092
+#: htdocs/luci-static/resources/honk/service.js:1084
 msgid "Configuration"
 msgstr "設定"
 
-#: htdocs/luci-static/resources/honk/service.js:1029
+#: htdocs/luci-static/resources/honk/service.js:1021
 msgid "Configuration file"
 msgstr "設定檔"
 
-#: htdocs/luci-static/resources/honk/service.js:555
+#: htdocs/luci-static/resources/honk/service.js:545
 msgid "Configuration is invalid, the service was not reloaded"
 msgstr "設定有誤，服務未重新載入"
 
-#: htdocs/luci-static/resources/honk/service.js:1145
+#: htdocs/luci-static/resources/honk/service.js:1137
 msgid "Download"
 msgstr "下載日誌"
 
-#: htdocs/luci-static/resources/honk/service.js:1093
+#: htdocs/luci-static/resources/honk/service.js:1085
 msgid "Edit the configuration file and every file it includes; each tab is saved to its own file."
 msgstr "編輯設定檔及其 include 的所有檔案，每個分頁儲存到各自的檔案。"
 
-#: htdocs/luci-static/resources/honk/service.js:992
+#: htdocs/luci-static/resources/honk/service.js:984
 msgid "Enable"
 msgstr "啟用"
 
-#: htdocs/luci-static/resources/honk/service.js:1041
+#: htdocs/luci-static/resources/honk/service.js:1033
 msgid "Enable the doona web UI"
 msgstr "啟用 doona 網頁介面"
 
@@ -76,60 +72,60 @@ msgstr "啟用 doona 網頁介面"
 msgid "Honk"
 msgstr "Honk"
 
-#: htdocs/luci-static/resources/honk/service.js:1006
+#: htdocs/luci-static/resources/honk/service.js:998
 msgid "Install"
 msgstr "安裝"
 
-#: htdocs/luci-static/resources/honk/service.js:717
-#: htdocs/luci-static/resources/honk/service.js:730
+#: htdocs/luci-static/resources/honk/service.js:707
+#: htdocs/luci-static/resources/honk/service.js:720
 msgid "Installing…"
 msgstr "正在安裝…"
 
-#: htdocs/luci-static/resources/honk/service.js:1055
+#: htdocs/luci-static/resources/honk/service.js:1047
 msgid "Keep the configuration in a database"
 msgstr "將設定儲存在資料庫中"
 
-#: htdocs/luci-static/resources/honk/service.js:1056
+#: htdocs/luci-static/resources/honk/service.js:1048
 msgid "Lets doona import the configuration and keep a revision history. honk then reads the database, not the configuration file. Saving restarts honk."
 msgstr "讓 doona 匯入設定並保留修訂記錄。此後 honk 讀取資料庫，不再讀取設定檔。儲存後會重新啟動 honk。"
 
-#: htdocs/luci-static/resources/honk/service.js:1117
+#: htdocs/luci-static/resources/honk/service.js:1109
 #: menu.d/luci-app-honk.json
 msgid "Log"
 msgstr "日誌"
 
-#: htdocs/luci-static/resources/honk/service.js:1035
+#: htdocs/luci-static/resources/honk/service.js:1027
 msgid "Must be a file in %s"
 msgstr "必須是 %s 中的檔案"
 
-#: htdocs/luci-static/resources/honk/service.js:934
+#: htdocs/luci-static/resources/honk/service.js:923
 msgid "No log entries."
 msgstr "尚無日誌。"
 
-#: htdocs/luci-static/resources/honk/service.js:1010
-#: htdocs/luci-static/resources/honk/service.js:666
-#: htdocs/luci-static/resources/honk/service.js:860
+#: htdocs/luci-static/resources/honk/service.js:1002
+#: htdocs/luci-static/resources/honk/service.js:656
+#: htdocs/luci-static/resources/honk/service.js:850
 msgid "Not installed"
 msgstr "未安裝"
 
-#: htdocs/luci-static/resources/honk/service.js:855
+#: htdocs/luci-static/resources/honk/service.js:845
 msgid "Not running"
 msgstr "未執行"
 
-#: htdocs/luci-static/resources/honk/service.js:871
+#: htdocs/luci-static/resources/honk/service.js:861
 msgid "Open Web Interface"
 msgstr "開啟 Web 介面"
 
-#: htdocs/luci-static/resources/honk/service.js:1124
-#: htdocs/luci-static/resources/honk/service.js:1126
+#: htdocs/luci-static/resources/honk/service.js:1116
+#: htdocs/luci-static/resources/honk/service.js:1118
 msgid "Pause"
 msgstr "暫停重新整理"
 
-#: htdocs/luci-static/resources/honk/service.js:1102
+#: htdocs/luci-static/resources/honk/service.js:1094
 msgid "Re-read includes"
 msgstr "重新解析 include"
 
-#: htdocs/luci-static/resources/honk/service.js:1135
+#: htdocs/luci-static/resources/honk/service.js:1127
 msgid "Refresh"
 msgstr "重新整理"
 
@@ -137,43 +133,43 @@ msgstr "重新整理"
 msgid "Remove experimental.clash_api.external_controller."
 msgstr "刪除 experimental.clash_api.external_controller。"
 
-#: htdocs/luci-static/resources/honk/service.js:1124
+#: htdocs/luci-static/resources/honk/service.js:1116
 msgid "Resume"
 msgstr "繼續重新整理"
 
-#: htdocs/luci-static/resources/honk/service.js:855
+#: htdocs/luci-static/resources/honk/service.js:845
 msgid "Running"
 msgstr "執行中"
 
-#: htdocs/luci-static/resources/honk/service.js:1108
+#: htdocs/luci-static/resources/honk/service.js:1100
 msgid "Save files"
 msgstr "儲存檔案"
 
-#: htdocs/luci-static/resources/honk/service.js:573
+#: htdocs/luci-static/resources/honk/service.js:563
 msgid "Save or discard the unsaved changes of %s first"
 msgstr "請先儲存或放棄 %s 尚未儲存的編輯"
 
-#: htdocs/luci-static/resources/honk/service.js:546
+#: htdocs/luci-static/resources/honk/service.js:536
 msgid "Saved"
 msgstr "已儲存"
 
-#: htdocs/luci-static/resources/honk/service.js:564
+#: htdocs/luci-static/resources/honk/service.js:554
 msgid "Saved, but the service could not be reloaded: %s"
 msgstr "已儲存，但無法重新載入服務：%s"
 
-#: htdocs/luci-static/resources/honk/service.js:597
+#: htdocs/luci-static/resources/honk/service.js:587
 msgid "Saved, but the service could not be restarted: %s"
 msgstr "已儲存，但無法重新啟動服務：%s"
 
-#: htdocs/luci-static/resources/honk/service.js:560
+#: htdocs/luci-static/resources/honk/service.js:550
 msgid "Saved, the service is reloading"
 msgstr "已儲存，服務正在重新載入"
 
-#: htdocs/luci-static/resources/honk/service.js:594
+#: htdocs/luci-static/resources/honk/service.js:584
 msgid "Saved, the service is restarting"
 msgstr "已儲存，服務正在重新啟動"
 
-#: htdocs/luci-static/resources/honk/service.js:684
+#: htdocs/luci-static/resources/honk/service.js:674
 msgid "Select the packages to upgrade:"
 msgstr "選擇要升級的套件："
 
@@ -193,91 +189,91 @@ msgstr "將 experimental.native_api.password_auth 設為 true，或設定 experi
 msgid "Set global.data_dir to %s."
 msgstr "將 global.data_dir 設為 %s。"
 
-#: htdocs/luci-static/resources/honk/service.js:1023
+#: htdocs/luci-static/resources/honk/service.js:1015
 msgid "Start at boot"
 msgstr "開機自動啟動"
 
-#: htdocs/luci-static/resources/honk/service.js:912
+#: htdocs/luci-static/resources/honk/service.js:901
 msgid "Start at boot is off"
 msgstr "已關閉開機自動啟動"
 
-#: htdocs/luci-static/resources/honk/service.js:912
+#: htdocs/luci-static/resources/honk/service.js:901
 msgid "Start at boot is on"
 msgstr "已開啟開機自動啟動"
 
-#: htdocs/luci-static/resources/honk/service.js:911
+#: htdocs/luci-static/resources/honk/service.js:900
 msgid "Start at boot is on; %s no longer starts at boot, because dae and honk cannot run at the same time."
 msgstr "已開啟開機自動啟動。dae 和 honk 不能同時執行，%s 不再開機自動啟動。"
 
-#: htdocs/luci-static/resources/honk/service.js:1024
+#: htdocs/luci-static/resources/honk/service.js:1016
 msgid "Starts automatically when the router boots; does not change whether it is running now."
 msgstr "路由器開機時自動啟動；不影響目前是否正在執行。"
 
-#: htdocs/luci-static/resources/honk/service.js:806
+#: htdocs/luci-static/resources/honk/service.js:796
 msgid "These packages were not upgraded: %s"
 msgstr "以下套件未升級：%s"
 
-#: htdocs/luci-static/resources/honk/service.js:643
+#: htdocs/luci-static/resources/honk/service.js:633
 msgid "To use this feed's version, run %s; other packages can be added to the same command."
 msgstr "如需改用本軟體源的版本，請執行 %s；其他套件可加入同一條命令。"
 
-#: htdocs/luci-static/resources/honk/service.js:915
+#: htdocs/luci-static/resources/honk/service.js:904
 msgid "Unable to change Start at boot: %s"
 msgstr "無法變更開機自動啟動：%s"
 
-#: htdocs/luci-static/resources/honk/service.js:457
+#: htdocs/luci-static/resources/honk/service.js:447
 msgid "Unable to read %s: %s"
 msgstr "無法讀取 %s：%s"
 
-#: htdocs/luci-static/resources/honk/service.js:831
+#: htdocs/luci-static/resources/honk/service.js:821
 msgid "Unable to read upgrade status. The job may still be running; reload to reconnect."
 msgstr "無法讀取升級狀態。工作可能仍在執行；請重新載入頁面以恢復連線。"
 
-#: htdocs/luci-static/resources/honk/service.js:1009
+#: htdocs/luci-static/resources/honk/service.js:1001
 msgid "Unable to read version: %s"
 msgstr "無法讀取版本：%s"
 
-#: htdocs/luci-static/resources/honk/service.js:537
+#: htdocs/luci-static/resources/honk/service.js:527
 msgid "Unable to save: %s"
 msgstr "儲存失敗：%s"
 
-#: htdocs/luci-static/resources/honk/service.js:1042
+#: htdocs/luci-static/resources/honk/service.js:1034
 msgid "Unchecked, honk runs without the native API and doona. Saving restarts honk."
 msgstr "取消勾選後，honk 只運行核心，不啟用 native API 與 doona。儲存時會重新啟動 honk。"
 
-#: htdocs/luci-static/resources/honk/service.js:671
+#: htdocs/luci-static/resources/honk/service.js:661
 msgid "Up to date"
 msgstr "已是最新版本"
 
-#: htdocs/luci-static/resources/honk/service.js:682
-#: htdocs/luci-static/resources/honk/service.js:683
-#: htdocs/luci-static/resources/honk/service.js:708
-#: htdocs/luci-static/resources/honk/service.js:843
+#: htdocs/luci-static/resources/honk/service.js:672
+#: htdocs/luci-static/resources/honk/service.js:673
+#: htdocs/luci-static/resources/honk/service.js:698
+#: htdocs/luci-static/resources/honk/service.js:833
 msgid "Upgrade"
 msgstr "升級"
 
-#: htdocs/luci-static/resources/honk/service.js:808
+#: htdocs/luci-static/resources/honk/service.js:798
 msgid "Upgrade complete."
 msgstr "升級完成。"
 
-#: htdocs/luci-static/resources/honk/service.js:689
+#: htdocs/luci-static/resources/honk/service.js:679
 msgid "Upgrading %s restarts the service and interrupts connections for a few seconds; upgrading only the other packages reloads it. Continue?"
 msgstr "升級 %s 會重新啟動服務，連線將中斷數秒；只升級其他套件則改為重新載入。是否繼續？"
 
-#: htdocs/luci-static/resources/honk/service.js:707
-#: htdocs/luci-static/resources/honk/service.js:786
+#: htdocs/luci-static/resources/honk/service.js:697
+#: htdocs/luci-static/resources/honk/service.js:776
 msgid "Upgrading…"
 msgstr "正在升級…"
 
-#: htdocs/luci-static/resources/honk/service.js:1007
+#: htdocs/luci-static/resources/honk/service.js:999
 msgid "Version"
 msgstr "版本"
 
-#: htdocs/luci-static/resources/honk/service.js:827
+#: htdocs/luci-static/resources/honk/service.js:817
 msgid "Waiting for the package manager to reconnect…"
 msgstr "正在等待套件管理員重新連線…"
 
-#: htdocs/luci-static/resources/honk/service.js:627
-#: htdocs/luci-static/resources/honk/service.js:792
+#: htdocs/luci-static/resources/honk/service.js:617
+#: htdocs/luci-static/resources/honk/service.js:782
 msgid "apk exited with code %s."
 msgstr "apk 執行失敗，結束代碼為 %s。"
