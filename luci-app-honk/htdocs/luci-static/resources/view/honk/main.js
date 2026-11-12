@@ -73,7 +73,7 @@ async function webUi(files) {
 return service.View.extend({
 	app: {
 		name: 'honk',
-		title: 'honk',
+		title: 'Honk',
 		webUi,
 		// Both create dae0/daens and hook the same interfaces: only one may run.
 		other: 'dae',

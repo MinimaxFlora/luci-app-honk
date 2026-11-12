@@ -281,11 +281,14 @@ const STYLE = `
 /* The page buttons save the settings of the status tab only; the editor has its own. */
 body:has(.du-panes > [data-tab="status"]:not([data-tab-active="true"])) .cbi-page-actions { display: none; }
 .du-panes .right { margin: .5em 0; }
-/* 和 HomeProxy 一样：标签页在最上面，下面是名字、简介、运行状态 */
-.du-hero { margin: 0 0 1em; padding: .8em 1em; border: 1px solid rgba(128,128,128,.25); border-radius: 6px; }
-.du-hero h2 { margin: 0 0 .3em; padding: 0; font-size: 1.7em; font-weight: 600; line-height: 1.2; }
-.du-hero-desc { margin: 0 0 .55em; opacity: .85; }
-.du-hero-state { margin: 0; font-size: 1.05em; }
+/* 照 HomeProxy 的样子：标签页在最上面，然后 名字 / 简介 / (版本) 运行状态 */
+.du-hero h2 { margin: 0 0 .5em; padding: 0; font-size: 1.85em; font-weight: 600; line-height: 1.2; }
+.du-hero-desc { margin: 0 0 1em; opacity: .7; }
+.du-hero-status {
+	margin: 0 0 1.2em; padding: .75em 1em; border-radius: 6px;
+	background: rgba(128,128,128,.08); border: 1px solid rgba(128,128,128,.18);
+}
+.du-hero-status em { font-style: italic; }
 /* 检测结果跟在按钮后面，不换行占一整行 */
 .du-pkg-status { display: inline; margin-left: .6em; }
 .cbi-value:has(.du-web-ui:empty) { display: none; }
@@ -781,10 +784,11 @@ const ServiceView = view.extend({
 			const state = running ? _('Running') : _('Not running');
 			document.getElementById(name + '-status')?.replaceChildren(
 				E('em', { 'class': running ? 'du-running' : 'du-stopped' }, state));
-			const hero = document.getElementById(name + '-hero-state');
-			if (hero) {
-				hero.textContent = state;
-				hero.className = running ? 'du-running' : 'du-stopped';
+			// HomeProxy 的写法：<em><span style="color:red"><strong>名字 (版本) 状态</strong></span></em>
+			if (this.heroLine) {
+				this.heroLine.style.color = running ? 'green' : 'red';
+				this.heroLine.replaceChildren(E('strong', {},
+					'Honk (' + (this.heroVersion || _('Not installed')) + ') ' + state));
 			}
 			this.showServiceButtons(running);
 		});
@@ -920,17 +924,16 @@ const ServiceView = view.extend({
 		this.logBox = E('pre', { 'class': 'du-log' });
 		this.setFiles(files);
 
-		// 和 HomeProxy 一样：标签页在最上面，下面是 名字 / 简介 / 运行状态
+		// 照 HomeProxy：标题、简介、然后是 名字 (版本) 运行状态 一行
 		const installedVersion = installed.error ? null
 			: installed.find(pkg => pkg.name === name)?.version || null;
-		const heroState = E('em', { 'id': name + '-hero-state', 'class': 'du-stopped' }, '…');
+		this.heroVersion = installedVersion;
+		this.heroLine = E('span', { 'id': name + '-hero-line' });
 		const hero = E('div', { 'class': 'du-hero' }, [
 			E('h2', { 'name': 'content' }, 'Honk'),
-			E('p', { 'class': 'du-hero-desc' },
+			E('div', { 'class': 'du-hero-desc' },
 				'基于 Rust 与 eBPF 的新一代 Linux 高性能透明代理引擎。'),
-			E('p', { 'class': 'du-hero-state' }, [
-				'Honk (', installedVersion || _('Not installed'), ') ', heroState
-			])
+			E('div', { 'class': 'du-hero-status' }, E('em', {}, this.heroLine))
 		]);
 
 		const m = new form.Map(name);
@@ -1077,12 +1080,12 @@ const ServiceView = view.extend({
 
 			const page = E('div', {}, [ panes ]);
 			ui.tabs.initTabGroup(panes.childNodes);
-			// 标签栏是 initTabGroup 插进去的第一个子节点，hero 紧跟在它后面
+			// initTabGroup 把标签栏建在 panes 里面；挪到最前面，hero 紧跟其后，
+			// 顺序就是 标签页 → 名字/简介/状态 → 标签内容，和 HomeProxy 一样
 			const tabMenu = panes.querySelector(':scope > ul.cbi-tabmenu');
 			if (tabMenu)
-				panes.insertBefore(hero, tabMenu.nextSibling);
-			else
-				panes.insertBefore(hero, panes.firstChild);
+				page.insertBefore(tabMenu, panes);
+			page.insertBefore(hero, panes);
 			this.updateStatus();
 			this.packagePolling = true;
 			// 立刻查一次，别让"检查更新"按钮要等第一次轮询之后才可点

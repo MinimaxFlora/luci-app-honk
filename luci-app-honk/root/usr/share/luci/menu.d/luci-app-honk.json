@@ -1,6 +1,6 @@
 {
 	"admin/services/honk": {
-		"title": "honk",
+		"title": "Honk",
 		"order": 60,
 		"action": {
 			"type": "view",
