@@ -532,8 +532,14 @@ jobs:
           echo "release tag: $tag"
 
           mkdir -p out/release
-          cp out/apk/*/*.apk out/ipk/*/*.ipk out/release/ 2>/dev/null || true
+          # 资产名必须带架构后缀（helper 靠 "<包名>-…-<架构>.apk" 挑包）。artifacts 里
+          # dist 顶层就是带后缀的那份；out/apk/<arch>/ 里的名字被去掉了后缀，不能用。
+          for f in artifacts/packages-apk-*/*.apk artifacts/packages-ipk-*/*.ipk; do
+            [ -f "$f" ] || continue
+            cp "$f" out/release/
+          done
           echo "资产数: $(ls -1 out/release | wc -l)"
+          ls -1 out/release | head -8
 
           if gh release view "$tag" >/dev/null 2>&1; then
             gh release upload "$tag" out/release/* --clobber

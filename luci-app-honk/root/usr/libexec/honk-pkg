@@ -119,6 +119,9 @@ version_cmp() {
 # 版本以 release 的 tag 为准（GitHub 会把资产名里的 ~ + 换成 .，不能拿资产名解版本）；
 # 只列「已安装 + 有更新」的包；vmlinux-btf 因为锁内核，不参与自动更新
 release_updates() {
+	# 后台作业（upgrade/install）里没人调 repo_setup，REPO_ARCH 会是空的，
+	# 那样 "<包名>-…-<架构>.apk" 永远匹配不上，只能得到“没有更新”
+	[ -n "${REPO_ARCH:-}" ] || repo_setup >/dev/null || return 1
 	[ -n "${INSTALLED_TABLE:-}" ] || build_installed_table "$@" || return 1
 	release_file=$(fetch_release) || return 1
 	tag=$(jsonfilter -i "$release_file" -e '@.tag_name' 2>/dev/null)
