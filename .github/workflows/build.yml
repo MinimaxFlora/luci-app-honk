@@ -512,6 +512,7 @@ jobs:
         if: github.server_url == 'https://github.com'
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           SHA: ${{ github.sha }}
         run: |
           set -eu
