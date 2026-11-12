@@ -284,24 +284,24 @@ body:has(.du-panes > [data-tab="status"]:not([data-tab-active="true"])) .cbi-pag
 /* 标签栏照 HomeProxy：整条白色卡片，标签是满高的块，选中的灰底 + 底部蓝线 */
 .du-page > .cbi-tabmenu {
 	background: var(--surface-color, #fff);
-	/* 标签栏和下面的内容连成一整张：不留灰缝，也不让接缝处出现阴影线 */
+	/* 照 HomeProxy 的标签条：白色底，标签四周的内边距一样（上下 = 左右），
+	   下面直接接到内容上，不留灰缝 */
 	border-radius: var(--radius-card, 12px) var(--radius-card, 12px) 0 0;
-	padding: 0;
+	padding: var(--control-gap, .5rem) var(--section-inset, 1.25rem);
 	margin: 0;
-	position: relative;
-	z-index: 1;
 	overflow: hidden;
 	gap: 0;
 }
 .du-page > .cbi-tabmenu > li {
-	margin: 0; padding: 0; border: 0; border-radius: 0;
+	margin: 0; padding: 0; border: 0;
+	border-radius: var(--radius-control, 8px) var(--radius-control, 8px) 0 0;
 	background: transparent;
 	display: flex; align-items: center;
-	height: 46px;
+	height: 38px;
 }
 .du-page > .cbi-tabmenu > li > a {
-	padding: 0 var(--section-inset, 1.25rem);
-	line-height: 46px;
+	padding: 0 1rem;
+	line-height: 38px;
 	color: var(--tab-inactive-color, #5c6470);
 	border: 0;
 }
@@ -313,7 +313,7 @@ body:has(.du-panes > [data-tab="status"]:not([data-tab-active="true"])) .cbi-pag
 	color: var(--text-strong, #1f2329);
 	font-weight: 500;
 }
-/* 接到标签栏下面的那部分，去掉上圆角和阴影，接缝才是一条直线 */
+/* 接在标签条下面的那块去掉上圆角和阴影，和标签条连成一整块 */
 .du-panes > .cbi-map:first-child > h2,
 .du-panes > [data-tab-title] {
 	border-start-start-radius: 0;
