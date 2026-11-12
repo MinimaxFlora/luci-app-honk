@@ -286,9 +286,11 @@ body:has(.du-panes > [data-tab="status"]:not([data-tab-active="true"])) .cbi-pag
 	background: var(--surface-color, #fff);
 	/* 照 HomeProxy 的标签条：白色底，标签四周的内边距一样（上下 = 左右），
 	   下面直接接到内容上，不留灰缝 */
-	border-radius: var(--radius-card, 12px);
+	border-radius: var(--radius-card, 12px) var(--radius-card, 12px) 0 0;
 	padding: var(--control-gap, .5rem) var(--section-inset, 1.25rem) 0;
-	margin: 0 0 var(--section-gap, 1rem);
+	margin: 0;
+	position: relative;
+	z-index: 1;
 	gap: 0;
 	overflow: hidden;
 	gap: 0;
@@ -314,6 +316,14 @@ body:has(.du-panes > [data-tab="status"]:not([data-tab-active="true"])) .cbi-pag
 	color: var(--text-strong, #1f2329);
 	font-weight: 500;
 }
+/* 蓝线下面直接接内容（HomeProxy 实测蓝线下方是白色，不是页面底色），
+   去掉下面那块的上圆角和阴影，避免接缝出现深色线 */
+.du-panes > .cbi-map:first-child > h2,
+.du-panes > [data-tab-title] {
+	border-start-start-radius: 0;
+	border-start-end-radius: 0;
+}
+.du-panes > .cbi-map:first-child > h2 { box-shadow: none; }
 /* 标签页里的卡片要撑满宽度：主题把 [data-tab-title] 设成了 flex，子元素会缩成内容宽 */
 .du-panes > [data-tab-title] { flex-direction: column; }
 .du-panes > [data-tab-title] > * { width: 100%; min-width: 0; }
