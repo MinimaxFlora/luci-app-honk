@@ -75,16 +75,6 @@ function isBootEnabled(name) {
 	return L.resolveDefault(callRcList(name), {}).then(res => res?.[name]?.enabled === true);
 }
 
-// A service takes a moment to come up or go down
-async function waitRunning(name, wanted, tries = 10) {
-	let running = !wanted;
-	for (let i = 0; i < tries && running !== wanted; i++) {
-		await new Promise(resolve => setTimeout(resolve, 500));
-		running = await isRunning(name);
-	}
-	return running === wanted;
-}
-
 function notify(text, type) {
 	return ui.addTimeLimitedNotification(null, E('p', text), 8000, type);
 }
@@ -870,48 +860,20 @@ const ServiceView = view.extend({
 						'rel': 'noopener noreferrer'
 					}, _('Open Web Interface')));
 			}
-			this.showServiceButtons(running);
 		});
 	},
 
-	/* 勾选框跟着服务状态走；用户改了还没保存时不覆盖 */
-	showServiceButtons(running) {
-		if (this.runSwitch && !this.runDirty && this.runSwitch.checked !== running)
-			this.runSwitch.checked = running;
-	},
-
-	async runServiceAction(action) {
+	/* 保存并应用之后按“启用”直接 start/stop（和 adguardhome 一样：开关是 UCI 的
+	   enabled，init 脚本读它来决定能不能起，所以这里必须等 Map.save() 把文件写完再动作）。
+	   不用 reload：reload 只在服务已经注册到 procd 时才可靠，停着的时候不一定会起。 */
+	async applyRunState() {
 		const { name, other } = this.app;
-		const buttons = [ this.runSwitch ];
-
-		buttons.forEach(button => { button.disabled = true; });
-		try {
-			// dae and honk cannot run at the same time: the other one stops first,
-			// and the start waits until it has let go of the network.
-			let stoppedOther = false;
-			if (action === 'start' && await isRunning(other)) {
-				await callInitAction(other, 'stop');
-				if (!await waitRunning(other, false, 20))
-					return notify(_('%s did not stop, the service was not started.').format(other), 'warning');
-				stoppedOther = true;
-			}
-
-			await callInitAction(name, action);
-			const wanted = action !== 'stop';
-			if (await waitRunning(name, wanted))
-				notify(wanted ? _('The service started') : _('The service stopped'), 'info');
-			else
-				notify(wanted ? _('The service did not start, see the Log tab.') : _('The service did not stop.'), 'warning');
-			if (stoppedOther)
-				notify(_('%s was stopped first, because dae and honk cannot run at the same time.').format(other), 'info');
-		}
-		catch (err) {
-			ui.addNotification(null, E('p', _('The service action failed: %s').format(err.message)), 'error');
-		}
-		finally {
-			buttons.forEach(button => { button.disabled = false; });
-			await this.updateStatus();
-		}
+		const want = uci.get(name, 'config', 'enabled') === '1';
+		// honk 和 dae 都要 dae0/daens：启用 honk 前先把 dae 停掉
+		if (want)
+			await callInitAction(other, 'stop').catch(() => {});
+		await callInitAction(name, want ? 'start' : 'stop').catch(() => {});
+		await this.updateStatus();
 	},
 
 	updateBoot() {
@@ -998,8 +960,11 @@ const ServiceView = view.extend({
 	},
 
 	/* 服务状态页：form.Map 的标题和简介 + 状态行 + 各项设置 */
-	renderStatusPage(files, installed, bootEnabled) {
+	async renderStatusPage(files, installed, bootEnabled) {
 		const { name, defaultConfig } = this.app;
+		// 表单直接读 UCI（“启用”是 option enabled），缓存没加载的话勾选框会显示成
+		// 未勾选，和服务实际状态对不上
+		await uci.load(name).catch(() => {});
 		this.heroVersion = installed.error ? null
 			: installed.find(pkg => pkg.name === name)?.version || null;
 
@@ -1014,16 +979,12 @@ const ServiceView = view.extend({
 		const s = m.section(form.NamedSection, 'config', name);
 		s.anonymous = true;
 
-		// 只有勾选框：勾选 = 启动，取消勾选 = 停止（和下面的“开机自动启动”一样）
-		// 勾选/取消只是选择，点“保存并应用”才真正启动/停止（见重写的 save()）
-		this.runSwitch = E('input', {
-			'type': 'checkbox', 'id': name + '-run',
-			'change': () => { this.runDirty = true; }
-		});
-		let o = s.option(form.DummyValue, '_status', _('Enable'));
-		o.renderWidget = () => E('div', { 'class': 'cbi-checkbox' }, [
-			this.runSwitch, E('label', { 'for': name + '-run' })
-		]);
+		// 和 adguardhome 一样：启用就是 /etc/config/honk 里的 option enabled，
+		// 勾选只是表单改动，点“保存并应用”才由 init 脚本 start/stop
+		let o = s.option(form.Flag, 'enabled', _('Enable'));
+		o.default = '0';
+		o.rmempty = false;
+		o.description = _('Checked: the service runs. Unchecked: it is stopped. Takes effect after Save & Apply.');
 
 		// 结果跟在按钮后面（和 passwall 一样），不是单独占一行
 		this.packageStatus = E('span', { 'class': 'du-pkg-status', 'aria-live': 'polite' });
@@ -1100,20 +1061,10 @@ const ServiceView = view.extend({
 		}
 
 
-		// “保存并应用”会调用 map.save()，这时才执行勾选框的选择；
-		// 重置则把选择恢复成实际状态
+		// “保存并应用”会调用 map.save()；保存完再按 enabled 让服务启停
 		const save = m.save.bind(m);
-		m.save = (cb, silent) => Promise.resolve(save(cb, silent)).then(result => {
-			if (!this.runDirty)
-				return result;
-			this.runDirty = false;
-			return this.runServiceAction(this.runSwitch.checked ? 'start' : 'stop').then(() => result);
-		});
-		const reset = m.reset.bind(m);
-		m.reset = () => {
-			this.runDirty = false;
-			return Promise.resolve(reset()).then(result => this.updateStatus().then(() => result));
-		};
+		m.save = (cb, silent) => Promise.resolve(save(cb, silent))
+			.then(result => this.applyRunState().catch(() => {}).then(() => result));
 
 		return m.render().then(async mapNode => {
 			// 面板地址只算一次；运行中时按钮出现在状态行后面（照 adguardhome 的做法）

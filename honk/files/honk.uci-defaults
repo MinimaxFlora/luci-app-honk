@@ -1,26 +1,29 @@
-# Moves the boot setting of honk from the UCI option 'enabled' of earlier
-# versions to the rc.d link of its init script. Run once by the package scripts
-# (default_postinst sources it in a subshell, pkgname set) or on the first boot
-# of a firmware image that contains the package (pkgname empty). Never on the
-# build host, where /etc/init.d would be the host's.
+# 开机自启只由 rc.d 链接决定（/etc/init.d/honk enable/disable）；老版本把它存在
+# UCI 的 honk.config.enabled 里，包的 preinst 会先把那个值备份到 /tmp/honk-autostart。
+# 现在的 enabled 是“是否运行”（页面上那个“启用”勾选框），所以这里只做三件事：
+# 把备份落成链接；给老配置补一个 enabled，让页面上的勾选和设备实际一致；镜像构建
+# 出来的固件里保持关闭。由包的 default_postinst 在子 shell 里执行（pkgname 有值），
+# 或固件首次启动时执行（pkgname 为空）。不会在构建主机上跑：那里 /etc/init.d 是主机的。
 if [ -z "$IPKG_INSTROOT" ]; then
-	enabled="$(uci -q get honk.config.enabled)"
-	# the preinst script of the package saved the old value before apk replaced
-	# an unedited /etc/config/honk, which no longer has the option
-	if [ -z "$enabled" ] && [ -f /tmp/honk-autostart ]; then
-		enabled="$(cat /tmp/honk-autostart)"
-	fi
+	old="$(cat /tmp/honk-autostart 2>/dev/null)"
 	rm -f /tmp/honk-autostart
-	if [ -n "$enabled" ]; then
-		case "$enabled" in
-		1|on|true|yes|enabled) /etc/init.d/honk enable ;;
-		*) /etc/init.d/honk disable ;;
-		esac
-		uci -q delete honk.config.enabled
-		uci commit honk
-	elif [ -z "$pkgname" ]; then
-		# an image build enables every init script, but a new honk stays off
-		# until the user turns it on
+	case "$old" in
+	1|on|true|yes|enabled) /etc/init.d/honk enable ;;
+	'') ;;
+	*) /etc/init.d/honk disable ;;
+	esac
+
+	if [ -z "$(uci -q get honk.config.enabled)" ]; then
+		if pgrep -f honk-core >/dev/null 2>&1 || /etc/init.d/honk enabled; then
+			uci -q set honk.config.enabled='1'
+		else
+			uci -q set honk.config.enabled='0'
+		fi
+		uci -q commit honk
+	fi
+
+	# 镜像构建会给每个 init 脚本都建链接，新装的 honk 保持关闭直到用户在页面上启用
+	if [ -z "$pkgname" ] && [ "$(uci -q get honk.config.enabled)" != 1 ]; then
 		/etc/init.d/honk disable
 	fi
 fi

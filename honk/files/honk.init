@@ -57,6 +57,15 @@ start_service() {
 		enabled || return 1
 	fi
 
+	# /etc/config/honk 的 enabled 就是 LuCI 上的“启用”（默认 1，老配置里没有这个
+	# 选项时按启用处理）。开机自启仍然只由 rc.d 链接决定。
+	local enabled
+	config_get_bool enabled "config" "enabled" 1
+	if [ "$enabled" = 0 ]; then
+		logger -t honk "disabled in /etc/config/honk; not starting"
+		return 1
+	fi
+
 	# dae creates the same dae0 link pair and daens namespace and hooks the
 	# same interfaces, so the two never run at the same time. LuCI stops dae
 	# before it starts honk; started any other way while dae runs, honk
@@ -127,10 +136,20 @@ reload_service() {
 	# works.
 	config_load "$CONF"
 
-	local config_file store data_dir want
+	local config_file store data_dir want enabled
+	config_get_bool enabled "config" "enabled" 1
+	# 页面上的“启用”勾掉并保存：停掉；勾上保存：没在跑就起来
+	if [ "$enabled" = 0 ]; then
+		procd_running "$CONF" "$CONF" && stop
+		return 0
+	fi
+	procd_running "$CONF" "$CONF" || {
+		start
+		return 0
+	}
+
 	config_get config_file "config" "config_file" "/etc/honk/config.dae"
 	read_store
-	procd_running "$CONF" "$CONF" || return 0
 	# The command as jsonfilter prints it, one argument per line
 	want="$PROG
 --config
