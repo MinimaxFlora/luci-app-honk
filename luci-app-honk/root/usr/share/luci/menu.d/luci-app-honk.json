@@ -15,7 +15,7 @@
     }
   },
   "admin/services/honk/status": {
-    "title": "Basic Settings",
+    "title": "基础设置",
     "order": 10,
     "action": {
       "type": "view",
