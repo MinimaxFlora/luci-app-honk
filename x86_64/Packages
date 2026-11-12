@@ -1,0 +1,85 @@
+Package: honk
+Version: 0.1.0_beta6-r1
+Depends: libc, libstdcpp6, kmod-veth, kmod-sched-core, kmod-sched-bpf, kmod-nft-core, kmod-nft-queue, kmod-nfnetlink-queue, kmod-nf-conntrack, vmlinux-btf, v2ray-geoip, v2ray-geosite
+Source: /home/runner/work/_temp/feed/honk
+SourceName: honk
+License: GPL-3.0-only
+LicenseFiles: LICENSE
+Section: net
+SourceDateEpoch: 1784877710
+URL: https://github.com/daeuniverse/honk
+Architecture: x86_64
+Installed-Size: 34734080
+Description:  honk is an eBPF transparent proxy engine. honk-core embeds its eBPF object and
+ needs kernel BTF for CO-RE relocations, which vmlinux-btf provides. This
+ build enables the Clash API, the native API and the embedded doona dashboard
+ (native-ui), which is served at /ui on the native API listener.
+Filename: honk_0.1.0_beta6-r1_x86_64.ipk
+Size: 16443378
+SHA256sum: 4baf4f20d547f81c85d97ec391b790df1fe9861211dbe31d95386a79b83ad9a4
+
+Package: luci-app-honk
+Version: 26.316.51275~5c0e696-r1
+Depends: libc, luci-base, honk, jshn, flock
+Source: /home/runner/work/_temp/feed-luci/luci-app-honk
+SourceName: luci-app-honk
+License: GPL-3.0-or-later
+Section: luci
+SourceDateEpoch: 1784877710
+URL: https://github.com/openwrt/luci
+Maintainer: OpenWrt LuCI community
+Architecture: all
+Installed-Size: 71680
+Description:  LuCI support for honk
+Filename: luci-app-honk_26.316.51275~5c0e696-r1_all.ipk
+Size: 19694
+SHA256sum: efe298495d4e5562c8cf7b87a4ab9dbbe9450550810929d47b7bde6f990e1fb9
+
+Package: luci-i18n-honk-zh-cn
+Version: 26.316.51275~5c0e696
+Depends: libc, luci-app-honk
+Source: /home/runner/work/_temp/feed-luci/luci-app-honk
+SourceName: luci-app-honk
+License: GPL-3.0-or-later
+Section: luci
+SourceDateEpoch: 1784877710
+Architecture: all
+Installed-Size: 10240
+Description:  Translation for luci-app-honk - 简体中文 (Simplified Chinese)
+Filename: luci-i18n-honk-zh-cn_26.316.51275~5c0e696_all.ipk
+Size: 2948
+SHA256sum: 273c46e948b3693c3314524b81a9f723aa4c2fa5db2a94bbdc239f6d28c18db4
+
+Package: luci-i18n-honk-zh-tw
+Version: 26.316.51275~5c0e696
+Depends: libc, luci-app-honk
+Source: /home/runner/work/_temp/feed-luci/luci-app-honk
+SourceName: luci-app-honk
+License: GPL-3.0-or-later
+Section: luci
+SourceDateEpoch: 1784877710
+Architecture: all
+Installed-Size: 10240
+Description:  Translation for luci-app-honk - 正體中文 (Traditional Chinese)
+Filename: luci-i18n-honk-zh-tw_26.316.51275~5c0e696_all.ipk
+Size: 2951
+SHA256sum: 8969b696f27f243d89aeb79309aa21a6083dd80b0acc0bd201ced74f1ad7d621
+
+Package: vmlinux-btf
+Version: 6.6.144-r1
+Depends: kernel (=6.6.144~50daf8372d971124fb3519e8d87e02ae-r1), libc
+Source: /home/runner/work/_temp/feed/vmlinux-btf
+SourceName: vmlinux-btf
+License: GPL-2.0-only
+Section: kernel
+SourceDateEpoch: 1784877710
+URL: https://github.com/QiuSimons/vmlinux-btf
+Architecture: x86_64
+Installed-Size: 634880
+Description:  Detached BTF blob of this kernel, built from the kernel headers and the .config
+ of the build it belongs to. Install it to make CO-RE eBPF programs (honk) work
+ on a kernel whose image carries no BTF.
+Filename: vmlinux-btf_6.6.144-r1_x86_64.ipk
+Size: 228157
+SHA256sum: 473d6c42278d81cd117c0e6319cc62873231262349148d1128219827cec7a09e
+
