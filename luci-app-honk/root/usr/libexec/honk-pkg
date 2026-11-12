@@ -64,10 +64,18 @@ check_updates() {
 		[ -z "$update_output" ] || warning="$warning
 $update_output"
 	fi
+	# apk 最后一行是 "N unavailable, M stale; K distinct packages available"。
+	# 只要 K>0 就说明还有索引可用，"更新失败"只是个别源（比如镜像上坏掉的那个）。
+	available=$(printf '%s\n' "$update_output" |
+		sed -n 's/.*; *\([0-9][0-9]*\) distinct packages available.*/\1/p' | tail -n 1)
+	case "$available" in
+		''|*[!0-9]*) available=0 ;;
+	esac
 	packages=$(/usr/bin/apk --interactive=no --progress=no query --network=no \
 		--upgradable --fields name,version --format json "$@") || return $?
 	load_json "{\"packages\":$packages}" || fail 'Invalid apk query response.'
 	json_add_string warning "$warning"
+	json_add_int available "$available"
 	json_dump
 }
 

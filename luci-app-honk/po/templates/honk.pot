@@ -312,3 +312,12 @@ msgstr ""
 msgid "Installing…"
 msgstr ""
 
+
+#: ../luci-app-honk/htdocs/luci-static/resources/honk/service.js
+msgid "Some package sources could not be refreshed; the indexes that loaded were used."
+msgstr ""
+
+#: ../luci-app-honk/htdocs/luci-static/resources/honk/service.js
+msgid "The package index could not be refreshed, so updates cannot be confirmed."
+msgstr ""
+

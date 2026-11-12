@@ -240,3 +240,10 @@ msgstr "安装"
 msgid "Installing…"
 msgstr "正在安装…"
 
+
+msgid "Some package sources could not be refreshed; the indexes that loaded were used."
+msgstr "部分软件源未能刷新，已用能加载的索引检查。"
+
+msgid "The package index could not be refreshed, so updates cannot be confirmed."
+msgstr "软件包索引未能刷新，无法确认是否有更新。"
+

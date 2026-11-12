@@ -584,12 +584,21 @@ const ServiceView = view.extend({
 			if (!installed.some(pkg => pkg.name === this.app.name))
 				throw new Error(_('Not installed'));
 			const updates = result.packages.filter(pkg => installed.some(current => current.name === pkg.name));
+			// 个别源坏掉（镜像给了半截文件）时 apk 也返回 1，但索引其实加载了：
+			// available>0 就只是"部分源不可用"，不能再报成"更新失败"
+			const partial = !!result.warning && result.available > 0;
+			const broken = !!result.warning && !partial;
 			const warning = tag => result.warning ? [
-				E(tag, {}, _('Package index update failed; using available indexes.')),
+				E(tag, {}, partial
+					? _('Some package sources could not be refreshed; the indexes that loaded were used.')
+					: _('Package index update failed; using available indexes.')),
 				E('pre', { 'class': 'du-log' }, result.warning)
 			] : [];
 			if (!updates.length) {
-				this.packageStatus.replaceChildren(...warning('div'), E('div', {}, _('Up to date')));
+				this.packageStatus.replaceChildren(...warning('div'),
+					E('div', {}, broken
+						? _('The package index could not be refreshed, so updates cannot be confirmed.')
+						: _('Up to date')));
 				return;
 			}
 			this.packageStatus.replaceChildren();
