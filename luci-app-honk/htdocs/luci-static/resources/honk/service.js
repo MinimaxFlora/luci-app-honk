@@ -286,22 +286,23 @@ body:has(.du-panes > [data-tab="status"]:not([data-tab-active="true"])) .cbi-pag
 	background: var(--surface-color, #fff);
 	/* 照 HomeProxy 的标签条：白色底，标签四周的内边距一样（上下 = 左右），
 	   下面直接接到内容上，不留灰缝 */
-	border-radius: var(--radius-card, 12px) var(--radius-card, 12px) 0 0;
-	padding: var(--control-gap, .5rem) var(--section-inset, 1.25rem);
-	margin: 0;
+	border-radius: var(--radius-card, 12px);
+	padding: var(--control-gap, .5rem) var(--section-inset, 1.25rem) 0;
+	margin: 0 0 var(--section-gap, 1rem);
+	gap: 0;
 	overflow: hidden;
 	gap: 0;
 }
 .du-page > .cbi-tabmenu > li {
-	margin: 0; padding: 0; border: 0;
-	border-radius: var(--radius-control, 8px) var(--radius-control, 8px) 0 0;
+	margin: 0 3px 0 0; padding: 0; border: 0;
+	border-radius: 4px 4px 0 0;
 	background: transparent;
 	display: flex; align-items: center;
-	height: 38px;
+	height: 46px;
 }
 .du-page > .cbi-tabmenu > li > a {
 	padding: 0 1rem;
-	line-height: 38px;
+	line-height: 46px;
 	color: var(--tab-inactive-color, #5c6470);
 	border: 0;
 }
@@ -313,13 +314,6 @@ body:has(.du-panes > [data-tab="status"]:not([data-tab-active="true"])) .cbi-pag
 	color: var(--text-strong, #1f2329);
 	font-weight: 500;
 }
-/* 接在标签条下面的那块去掉上圆角和阴影，和标签条连成一整块 */
-.du-panes > .cbi-map:first-child > h2,
-.du-panes > [data-tab-title] {
-	border-start-start-radius: 0;
-	border-start-end-radius: 0;
-}
-.du-panes > .cbi-map:first-child > h2 { box-shadow: none; }
 /* 标签页里的卡片要撑满宽度：主题把 [data-tab-title] 设成了 flex，子元素会缩成内容宽 */
 .du-panes > [data-tab-title] { flex-direction: column; }
 .du-panes > [data-tab-title] > * { width: 100%; min-width: 0; }
@@ -328,6 +322,13 @@ body:has(.du-panes > [data-tab="status"]:not([data-tab-active="true"])) .cbi-pag
 .du-panes > .cbi-map > h2 { margin-top: 0; }
 /* 卡片之间留出和主题一致的间隙，别贴在一起 */
 .du-panes { display: flex; flex-direction: column; gap: var(--section-gap, 1rem); }
+/* 标签页里面不要再套一层卡片：外层 [data-tab-title] 已经是白卡片了，
+   里层 .cbi-section 再带一遍阴影就变成「框里套框」 */
+.du-panes > [data-tab-title] .cbi-section {
+	box-shadow: none;
+	background: transparent;
+	border-radius: 0;
+}
 /* 卡片上下也要留白：主题给的 [data-tab-title] padding 是 0，第一行和最后一行会贴边 */
 .du-panes > [data-tab-title] { padding: var(--field-gap, .6rem) 0; }
 /* 检测结果跟在按钮后面，不换行占一整行 */
