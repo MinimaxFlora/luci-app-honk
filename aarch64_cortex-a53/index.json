@@ -1,0 +1,10 @@
+{
+  "packages": {
+    "honk": "0.1.0_beta6-r1",
+    "luci-app-honk": "26.316.51275~5c0e696-r1",
+    "luci-i18n-honk-zh-cn": "26.316.51275~5c0e696",
+    "luci-i18n-honk-zh-tw": "26.316.51275~5c0e696",
+    "vmlinux-btf": "6.12.112-r1"
+  },
+  "version": 2
+}
