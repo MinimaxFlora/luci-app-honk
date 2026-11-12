@@ -163,12 +163,17 @@ CI 除了把包传上 Release，还会把每个架构的 `.apk` 和**签名索�
 
 ```
 https://raw.githubusercontent.com/MinimaxFlora/luci-app-honk/apk/<arch>/packages.adb
+https://raw.githubusercontent.com/MinimaxFlora/luci-app-honk/ipk/<arch>/Packages
 ```
 
-- `packages.adb` 由 `scripts/apk-repo.sh` 用 `apk mkndx --sign-key` 生成，签名算法 EC P-256，
-  私钥放在仓库 secret `APK_PRIVATE_KEY`，公钥 `key/key-build.pem` 一起放分支根上
-- 客户端把公钥丢进 `/etc/apk/keys/` 就能验证签名，不需要 `--allow-untrusted`
-- 没配 secret 时索引是未签名的，客户端只能 `apk add --allow-untrusted`
+- apk（25.x）：`packages.adb` 由 `scripts/apk-repo.sh` 用 `apk mkndx --sign-key` 生成，
+  签名算法 EC P-256，私钥放在仓库 secret `APK_PRIVATE_KEY`，公钥是分支根上的 `key-build.pem`；
+  客户端把公钥丢进 `/etc/apk/keys/` 就能验证，不需要 `--allow-untrusted`
+- ipk（24.x）：`Packages` / `Packages.gz` / `Packages.sig` 由 `scripts/ipk-repo.sh` 生成，
+  签名是 usign（Ed25519），私钥在 secret `USIGN_PRIVATE_KEY`，公钥 `key/key-build.pub`，
+  指纹 `ab9434f83c977e66`；客户端把公钥装成 `/etc/opkg/keys/ab9434f83c977e66` 即可
+- 没配对应 secret 时索引是未签名的，客户端要关掉校验（apk：`--allow-untrusted`，
+  opkg：不装公钥或 `option check_signature 0`）
 
 LuCI 页面里的“一键安装”（包没装时显示）做三件事：
 

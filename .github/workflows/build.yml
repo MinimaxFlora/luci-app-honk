@@ -57,6 +57,7 @@ jobs:
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
       has_apk: ${{ steps.plan.outputs.has_apk }}
+      has_ipk: ${{ steps.plan.outputs.has_ipk }}
     steps:
       - name: 计算要构建的 (格式, 架构) 组合
         id: plan
@@ -105,7 +106,7 @@ jobs:
           echo "$matrix" | python3 -c 'import json,sys; print("组合:", ", ".join(i["format"]+"/"+i["openwrt_arch"] for i in json.load(sys.stdin)["include"]))'
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
           # 只有编了 apk 才需要发软件源分支
-          echo "$matrix" | python3 -c 'import json,sys; d=json.load(sys.stdin)["include"]; print("has_apk=%s" % ("true" if any(i["format"]=="apk" for i in d) else "false"))' >> "$GITHUB_OUTPUT"
+          echo "$matrix" | python3 -c 'import json,sys; d=json.load(sys.stdin)["include"]; print("has_apk=%s" % ("true" if any(i["format"]=="apk" for i in d) else "false")); print("has_ipk=%s" % ("true" if any(i["format"]=="ipk" for i in d) else "false"))' >> "$GITHUB_OUTPUT"
 
   build:
     name: ${{ matrix.format }} · ${{ matrix.openwrt_arch }}
@@ -385,6 +386,28 @@ jobs:
           fi
           ls -l "$dir"
 
+      - name: 生成 ipk 软件源索引（带签名）
+        if: matrix.format == 'ipk'
+        env:
+          USIGN_PRIVATE_KEY: ${{ secrets.USIGN_PRIVATE_KEY }}
+        run: |
+          set -eu
+          usign="$SDK_DIR/staging_dir/host/bin/usign"
+          dir="dist/repo/$OPENWRT_ARCH"
+          mkdir -p "$dir"
+          cp dist/*.ipk "$dir/"
+          if [ -n "${USIGN_PRIVATE_KEY:-}" ]; then
+            key="$RUNNER_TEMP/usign.key"
+            printf '%s\n' "$USIGN_PRIVATE_KEY" > "$key"
+            chmod 600 "$key"
+            USIGN="$usign" sh scripts/ipk-repo.sh "$dir" "$key"
+            "$usign" -V -m "$dir/Packages" -p key/key-build.pub -x "$dir/Packages.sig"
+          else
+            echo "::warning::没配 secret USIGN_PRIVATE_KEY，索引未签名，客户端要关掉 check_signature"
+            USIGN="$usign" sh scripts/ipk-repo.sh "$dir"
+          fi
+          ls -l "$dir"
+
       - name: 上传产物
         uses: actions/upload-artifact@v7
         with:
@@ -397,9 +420,9 @@ jobs:
   #   https://raw.githubusercontent.com/<owner>/<repo>/apk/<arch>/packages.adb
   # 这样 LuCI 里的一键安装和检测更新都走 apk 自己那套签名校验，不用 --allow-untrusted。
   publish:
-    name: 发布 apk 软件源
+    name: 发布软件源分支
     needs: [ plan, build ]
-    if: needs.plan.outputs.has_apk == 'true'
+    if: needs.plan.outputs.has_apk == 'true' || needs.plan.outputs.has_ipk == 'true'
     runs-on: ubuntu-26.04
     timeout-minutes: 15
     # 源发布失败不该让整轮变红：Release 那边照样有包
@@ -413,36 +436,44 @@ jobs:
         with:
           path: artifacts
 
-      - name: 组装 apk 分支
+      - name: 组装 apk / ipk 分支
         run: |
           set -eu
-          rm -rf repo
-          mkdir -p repo
-          found=0
+          rm -rf out
+          mkdir -p out/apk out/ipk
+
+          # apk（25.x）：各架构的 .apk + packages.adb + index.json
           for d in artifacts/packages-apk-*; do
             [ -d "$d" ] || continue
             arch=${d##*packages-apk-}
             [ -d "$d/repo/$arch" ] || continue
-            mkdir -p "repo/$arch"
-            cp -a "$d/repo/$arch/." "repo/$arch/"
-            echo "  $arch: $(ls -1 "repo/$arch" | wc -l) 个文件"
-            found=1
+            mkdir -p "out/apk/$arch"
+            cp -a "$d/repo/$arch/." "out/apk/$arch/"
+            echo "apk/$arch: $(ls -1 "out/apk/$arch" | wc -l) 个文件"
           done
-          [ "$found" = 1 ] || { echo "::error::没有 apk 产物"; exit 1; }
           # 公钥用各 job 从私钥推导出来的那份（和索引签名必然配对）
           pem=$(ls artifacts/packages-apk-*/repo/key-build.pem 2>/dev/null | head -1)
           if [ -n "$pem" ]; then
-            cp "$pem" repo/key-build.pem
-            echo "公钥取自 $(dirname "$(dirname "$pem")")"
+            cp "$pem" out/apk/key-build.pem
           elif [ -f key/key-build.pem ]; then
-            cp key/key-build.pem repo/key-build.pem
-            echo "::warning::产物里没有公钥，用了仓库里的 key/key-build.pem"
-          else
-            echo "::warning::没有公钥，客户端无法验证签名"
+            cp key/key-build.pem out/apk/key-build.pem
+            echo "::warning::apk 产物里没有公钥，用了仓库里的 key/key-build.pem"
           fi
-          find repo -maxdepth 2 -type f | sort | head -40
 
-      - name: 推到 apk 分支
+          # ipk（24.x）：各架构的 .ipk + Packages(/.gz/.sig)
+          for d in artifacts/packages-ipk-*; do
+            [ -d "$d" ] || continue
+            arch=${d##*packages-ipk-}
+            [ -d "$d/repo/$arch" ] || continue
+            mkdir -p "out/ipk/$arch"
+            cp -a "$d/repo/$arch/." "out/ipk/$arch/"
+            echo "ipk/$arch: $(ls -1 "out/ipk/$arch" | wc -l) 个文件"
+          done
+          [ -f key/key-build.pub ] && cp key/key-build.pub out/ipk/key-build.pub
+
+          find out -maxdepth 2 -type f | sort | head -30
+
+      - name: 推到 apk / ipk 分支
         env:
           TOKEN: ${{ github.token }}
           SERVER_URL: ${{ github.server_url }}
@@ -450,11 +481,17 @@ jobs:
           SHA: ${{ github.sha }}
         run: |
           set -eu
-          cd repo
-          git init -q -b apk
-          git add -A
-          git -c user.name=ci -c user.email=ci@users.noreply.github.com \
-            commit -q -m "repo: $SHA 的 apk 软件源"
           url=$(printf '%s' "$SERVER_URL/$REPO.git" |
             sed -E "s#^(https?)://#\1://x-access-token:${TOKEN}@#")
-          git push -f "$url" apk
+          for branch in apk ipk; do
+            [ -d "out/$branch" ] || continue
+            [ -n "$(ls -A "out/$branch")" ] || continue
+            cd "out/$branch"
+            git init -q -b "$branch"
+            git add -A
+            git -c user.name=ci -c user.email=ci@users.noreply.github.com \
+              commit -q -m "repo: $SHA 的 $branch 软件源"
+            git push -f "$url" "$branch"
+            cd - >/dev/null
+            echo "已推送 $branch 分支"
+          done
