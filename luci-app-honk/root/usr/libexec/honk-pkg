@@ -52,31 +52,68 @@ query_installed() {
 		--installed --from installed --fields name,version --format json "$@"
 }
 
+# 检测更新不碰 apk 的索引：直接读我们自己软件源里的 index.json，拿它和已装版本比。
+# 这样 OpenWrt 镜像上某个坏掉的源（比如 video/packages.adb 被截断）不会影响检查结果，
+# 也不用等几十秒的 apk update。
 check_updates() {
-	# A bad repository must not hide upgrades from the indexes that did refresh.
-	# OpenWrt 25.12 configures rpcd's execution timeout to 30 seconds.
-	warning=
-	update_output=$(/usr/bin/timeout --signal=TERM --kill-after=5 20 \
-		/usr/bin/apk --interactive=no --progress=no update 2>&1)
-	update_code=$?
-	if [ "$update_code" -ne 0 ]; then
-		warning="apk update exited with code $update_code."
-		[ -z "$update_output" ] || warning="$warning
-$update_output"
+	repo_setup || fail 'Unable to determine the package source.'
+	index_url="$HONK_REPO_BASE/$REPO_ARCH/index.json"
+
+	index_file=$(mktemp /tmp/honk-index.XXXXXX) || fail 'Unable to create a temporary file.'
+	if ! wget -q -T 20 -O "$index_file" "$index_url" 2>/dev/null || [ ! -s "$index_file" ]; then
+		rm -f "$index_file"
+		fail "Unable to download the package index: $index_url"
 	fi
-	# apk 最后一行是 "N unavailable, M stale; K distinct packages available"。
-	# 只要 K>0 就说明还有索引可用，"更新失败"只是个别源（比如镜像上坏掉的那个）。
-	available=$(printf '%s\n' "$update_output" |
-		sed -n 's/.*; *\([0-9][0-9]*\) distinct packages available.*/\1/p' | tail -n 1)
-	case "$available" in
-		''|*[!0-9]*) available=0 ;;
-	esac
-	packages=$(/usr/bin/apk --interactive=no --progress=no query --network=no \
-		--upgradable --fields name,version --format json "$@") || return $?
-	load_json "{\"packages\":$packages}" || fail 'Invalid apk query response.'
-	json_add_string warning "$warning"
-	json_add_int available "$available"
+
+	installed_file=$(mktemp /tmp/honk-installed.XXXXXX) || {
+		rm -f "$index_file"
+		fail 'Unable to create a temporary file.'
+	}
+	installed_json=$(query_installed "$@") || {
+		rm -f "$index_file" "$installed_file"
+		fail 'Unable to query installed packages.'
+	}
+	# jshn 是有状态的，先把已装版本摊成 "名字 版本" 的文本，后面用 awk 查，
+	# 免得在拼输出 JSON 的过程中被 json_load 把状态冲掉
+	json_init
+	json_load "{\"list\":$installed_json}" || {
+		rm -f "$index_file" "$installed_file"
+		fail 'Invalid apk query response.'
+	}
+	json_select list || {
+		rm -f "$index_file" "$installed_file"
+		fail 'Invalid apk query response.'
+	}
+	i=1
+	while json_select "$i" 2>/dev/null; do
+		json_get_var name name
+		json_get_var version version
+		printf '%s %s\n' "$name" "$version" >> "$installed_file"
+		json_select ..
+		i=$((i + 1))
+	done
+
+	json_init
+	json_add_string source "$index_url"
+	json_add_string arch "$REPO_ARCH"
+	json_add_boolean signed "$REPO_SIGNED"
+	json_add_array packages
+	for name in "$@"; do
+		latest=$(jsonfilter -i "$index_file" -e "@.packages[\"$name\"]" 2>/dev/null)
+		[ -n "$latest" ] || continue
+		current=$(awk -v n="$name" '$1 == n { print $2; exit }' "$installed_file")
+		[ -n "$current" ] || continue
+		# apk version -t 打印 < = >：< 表示已装的比源里的旧
+		[ "$(/usr/bin/apk version -t "$current" "$latest" 2>/dev/null)" = "<" ] || continue
+		json_add_object
+		json_add_string name "$name"
+		json_add_string version "$latest"
+		json_add_string installed "$current"
+		json_close_object
+	done
+	json_close_array
 	json_dump
+	rm -f "$index_file" "$installed_file"
 }
 
 write_result() {
@@ -233,18 +270,19 @@ upgrade() {
 	(
 		trap '' HUP
 		code=0
+		# 个别源坏掉（镜像给了半截文件）时 apk update 会返回 1，但可用索引照常加载；
+		# 而 apk 之后会因为"有源不可用"拒绝继续（stale/unavailable repositories），
+		# 所以加 --force-missing-repositories：它只容忍取不到的源，签名错误照样拒绝
+		/usr/bin/apk --interactive=no --progress=no update || true
 		if [ "$action" = install ]; then
-			/usr/bin/apk --interactive=no --progress=no update || code=$?
-			if [ "$code" -eq 0 ]; then
-				if [ "$REPO_SIGNED" = 1 ]; then
-					/usr/bin/apk --interactive=no --progress=no add "$@"
-				else
-					/usr/bin/apk --interactive=no --progress=no add --allow-untrusted "$@"
-				fi
-				code=$?
+			if [ "$REPO_SIGNED" = 1 ]; then
+				/usr/bin/apk --interactive=no --progress=no --force-missing-repositories add "$@"
+			else
+				/usr/bin/apk --interactive=no --progress=no --force-missing-repositories add --allow-untrusted "$@"
 			fi
+			code=$?
 		else
-			/usr/bin/apk --interactive=no --progress=no upgrade "$@"
+			/usr/bin/apk --interactive=no --progress=no --force-missing-repositories upgrade "$@"
 			code=$?
 		fi
 		[ "$code" -ne 0 ] || reload_assets "$app" "$@"

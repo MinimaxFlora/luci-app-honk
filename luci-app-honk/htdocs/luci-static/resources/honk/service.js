@@ -583,22 +583,11 @@ const ServiceView = view.extend({
 			const installed = await this.queryPackages();
 			if (!installed.some(pkg => pkg.name === this.app.name))
 				throw new Error(_('Not installed'));
+			// 只跟我们自己的软件源比版本（helper 直接读 index.json），不再触发
+			// apk update，所以镜像上坏掉的源影响不到这里；拿不到索引会走 catch
 			const updates = result.packages.filter(pkg => installed.some(current => current.name === pkg.name));
-			// 个别源坏掉（镜像给了半截文件）时 apk 也返回 1，但索引其实加载了：
-			// available>0 就只是"部分源不可用"，不能再报成"更新失败"
-			const partial = !!result.warning && result.available > 0;
-			const broken = !!result.warning && !partial;
-			const warning = tag => result.warning ? [
-				E(tag, {}, partial
-					? _('Some package sources could not be refreshed; the indexes that loaded were used.')
-					: _('Package index update failed; using available indexes.')),
-				E('pre', { 'class': 'du-log' }, result.warning)
-			] : [];
 			if (!updates.length) {
-				this.packageStatus.replaceChildren(...warning('div'),
-					E('div', {}, broken
-						? _('The package index could not be refreshed, so updates cannot be confirmed.')
-						: _('Up to date')));
+				this.packageStatus.replaceChildren(E('div', {}, _('Up to date')));
 				return;
 			}
 			this.packageStatus.replaceChildren();
@@ -610,11 +599,10 @@ const ServiceView = view.extend({
 				'click': () => this.handleUpgrade(boxes.filter(box => box.checked).map(box => box.value))
 			}, _('Upgrade'));
 			ui.showModal(_('Upgrade'), [
-				...warning('p'),
 				E('p', {}, _('Select the packages to upgrade:')),
 				// Rows, not a list: Bootstrap gives li its muted text color.
 				E('div', {}, updates.map((pkg, i) => E('div', {}, E('label', {}, [
-					boxes[i], ' ', pkg.name + ': ' + current[pkg.name] + ' → ' + pkg.version
+					boxes[i], ' ', pkg.name + ': ' + (current[pkg.name] || pkg.installed) + ' → ' + pkg.version
 				])))),
 				E('p', {}, _('Upgrading %s restarts the service and interrupts connections for a few seconds; upgrading only the other packages reloads it. Continue?').format(this.app.name)),
 				E('div', { 'class': 'right' }, [

@@ -175,7 +175,11 @@ https://raw.githubusercontent.com/MinimaxFlora/luci-app-honk/ipk/<arch>/Packages
 - 没配对应 secret 时索引是未签名的，客户端要关掉校验（apk：`--allow-untrusted`，
   opkg：不装公钥或 `option check_signature 0`）
 
-LuCI 页面里的“一键安装”（包没装时显示）做三件事：
+LuCI 页面里的“检查更新”不碰系统包索引：helper 直接下载本仓库软件源里的
+`<arch>/index.json`，用 `apk version -t` 和已装版本比较。OpenWrt 镜像上某个源坏掉
+（比如 `video/packages.adb` 被截断）不会影响结果，也不会出现“索引更新失败”这种噪音。
+
+“一键安装”（包没装时显示）做三件事：
 
 1. 按 `/etc/openwrt_release` 的 `DISTRIB_ARCH` 算出架构，写
    `/etc/apk/repositories.d/honk.list` 指向上面那个索引
