@@ -874,45 +874,16 @@ const ServiceView = view.extend({
 		});
 	},
 
-	/* 勾选框跟着服务状态走 */
+	/* 勾选框跟着服务状态走；用户改了还没保存时不覆盖 */
 	showServiceButtons(running) {
-		if (this.runSwitch && this.runSwitch.checked !== running)
+		if (this.runSwitch && !this.runDirty && this.runSwitch.checked !== running)
 			this.runSwitch.checked = running;
-	},
-
-	/* Start, stop and restart act now; Start at boot stays as it is. */
-	handleServiceAction(action) {
-		const question = {
-			stop: _('Stopping the service interrupts connections. Continue?'),
-			restart: _('Restarting the service interrupts connections for a few seconds. Continue?')
-		}[action];
-		if (!question)
-			return this.runServiceAction(action);
-
-		const title = action === 'stop' ? _('Stop') : _('Restart');
-		ui.showModal(title, [
-			E('p', {}, question),
-			E('div', { 'class': 'right' }, [
-				E('button', { 'class': 'btn', 'click': () => {
-					ui.hideModal();
-					// 用户取消停止：把勾选恢复回去
-					if (action === 'stop' && this.runSwitch)
-						this.runSwitch.checked = true;
-				} }, _('Cancel')),
-				' ',
-				E('button', {
-					'class': 'btn ' + (action === 'stop' ? 'cbi-button-negative' : 'cbi-button-action'),
-					'click': () => this.runServiceAction(action)
-				}, title)
-			])
-		]);
 	},
 
 	async runServiceAction(action) {
 		const { name, other } = this.app;
 		const buttons = [ this.runSwitch ];
 
-		ui.hideModal();
 		buttons.forEach(button => { button.disabled = true; });
 		try {
 			// dae and honk cannot run at the same time: the other one stops first,
@@ -928,8 +899,7 @@ const ServiceView = view.extend({
 			await callInitAction(name, action);
 			const wanted = action !== 'stop';
 			if (await waitRunning(name, wanted))
-				notify({ start: _('The service started'), stop: _('The service stopped'),
-					restart: _('The service restarted') }[action], 'info');
+				notify(wanted ? _('The service started') : _('The service stopped'), 'info');
 			else
 				notify(wanted ? _('The service did not start, see the Log tab.') : _('The service did not stop.'), 'warning');
 			if (stoppedOther)
@@ -1045,9 +1015,10 @@ const ServiceView = view.extend({
 		s.anonymous = true;
 
 		// 只有勾选框：勾选 = 启动，取消勾选 = 停止（和下面的“开机自动启动”一样）
+		// 勾选/取消只是选择，点“保存并应用”才真正启动/停止（见重写的 save()）
 		this.runSwitch = E('input', {
 			'type': 'checkbox', 'id': name + '-run',
-			'change': ev => ev.target.checked ? this.runServiceAction('start') : this.handleServiceAction('stop')
+			'change': () => { this.runDirty = true; }
 		});
 		let o = s.option(form.DummyValue, '_status', _('Enable'));
 		o.renderWidget = () => E('div', { 'class': 'cbi-checkbox' }, [
@@ -1128,6 +1099,21 @@ const ServiceView = view.extend({
 			};
 		}
 
+
+		// “保存并应用”会调用 map.save()，这时才执行勾选框的选择；
+		// 重置则把选择恢复成实际状态
+		const save = m.save.bind(m);
+		m.save = (cb, silent) => Promise.resolve(save(cb, silent)).then(result => {
+			if (!this.runDirty)
+				return result;
+			this.runDirty = false;
+			return this.runServiceAction(this.runSwitch.checked ? 'start' : 'stop').then(() => result);
+		});
+		const reset = m.reset.bind(m);
+		m.reset = () => {
+			this.runDirty = false;
+			return Promise.resolve(reset()).then(result => this.updateStatus().then(() => result));
+		};
 
 		return m.render().then(async mapNode => {
 			// 面板地址只算一次；运行中时按钮出现在状态行后面（照 adguardhome 的做法）
