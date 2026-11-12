@@ -281,14 +281,9 @@ const STYLE = `
 /* The page buttons save the settings of the status tab only; the editor has its own. */
 body:has(.du-panes > [data-tab="status"]:not([data-tab-active="true"])) .cbi-page-actions { display: none; }
 .du-panes .right { margin: .5em 0; }
-/* 照 HomeProxy 的样子：标签页在最上面，然后 名字 / 简介 / (版本) 运行状态 */
-.du-hero h2 { margin: 0 0 .5em; padding: 0; font-size: 1.85em; font-weight: 600; line-height: 1.2; }
-.du-hero-desc { margin: 0 0 1em; opacity: .7; }
-.du-hero-status {
-	margin: 0 0 1.2em; padding: .75em 1em; border-radius: 6px;
-	background: rgba(128,128,128,.08); border: 1px solid rgba(128,128,128,.18);
-}
-.du-hero-status em { font-style: italic; }
+/* 页头照 HomeProxy：直接用主题的 cbi-map / cbi-section 样式，只压一下间距 */
+.du-panes > .cbi-map { margin-bottom: .5em; }
+.du-panes > .cbi-map > .cbi-section { margin-bottom: 1em; }
 /* 检测结果跟在按钮后面，不换行占一整行 */
 .du-pkg-status { display: inline; margin-left: .6em; }
 .cbi-value:has(.du-web-ui:empty) { display: none; }
@@ -785,10 +780,13 @@ const ServiceView = view.extend({
 			document.getElementById(name + '-status')?.replaceChildren(
 				E('em', { 'class': running ? 'du-running' : 'du-stopped' }, state));
 			// HomeProxy 的写法：<em><span style="color:red"><strong>名字 (版本) 状态</strong></span></em>
-			if (this.heroLine) {
-				this.heroLine.style.color = running ? 'green' : 'red';
-				this.heroLine.replaceChildren(E('strong', {},
-					'Honk (' + (this.heroVersion || _('Not installed')) + ') ' + state));
+			const line = document.getElementById(name + '-hero-line');
+			if (line) {
+				const color = running ? 'green' : 'red';
+				const text = 'Honk (' + (this.heroVersion || _('Not installed')) + ') ' + state;
+				line.innerHTML = '<em><span style="color:' + color + '"><strong>' +
+					String(text).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]) +
+					'</strong></span></em>';
 			}
 			this.showServiceButtons(running);
 		});
@@ -924,16 +922,18 @@ const ServiceView = view.extend({
 		this.logBox = E('pre', { 'class': 'du-log' });
 		this.setFiles(files);
 
-		// 照 HomeProxy：标题、简介、然后是 名字 (版本) 运行状态 一行
+		// 照 HomeProxy 的 DOM：cbi-map > h2 + cbi-map-descr，状态单独放一个 cbi-section。
+		// 注意 hero 必须放在 panes 里面（不能夹在 tabmenu 和 panes 之间），
+		// 否则 ui.tabs.switchTab() 取 menu.nextElementSibling 拿到的就不是 panes 了。
 		const installedVersion = installed.error ? null
 			: installed.find(pkg => pkg.name === name)?.version || null;
 		this.heroVersion = installedVersion;
-		this.heroLine = E('span', { 'id': name + '-hero-line' });
-		const hero = E('div', { 'class': 'du-hero' }, [
+		const hero = E('div', { 'class': 'cbi-map' }, [
 			E('h2', { 'name': 'content' }, 'Honk'),
-			E('div', { 'class': 'du-hero-desc' },
+			E('div', { 'class': 'cbi-map-descr' },
 				'基于 Rust 与 eBPF 的新一代 Linux 高性能透明代理引擎。'),
-			E('div', { 'class': 'du-hero-status' }, E('em', {}, this.heroLine))
+			E('div', { 'class': 'cbi-section', 'id': name + '-hero' },
+				E('p', { 'id': name + '-hero-line' }, '…'))
 		]);
 
 		const m = new form.Map(name);
@@ -1046,6 +1046,8 @@ const ServiceView = view.extend({
 			]);
 
 			const panes = E('div', { 'class': 'du-panes' }, [
+				// hero 放在 panes 里当第一个子节点：它没有 data-tab，切标签时一直显示
+				hero,
 				E('div', { 'data-tab': 'status', 'data-tab-title': _('Service status') }, mapNode),
 				E('div', { 'data-tab': 'config', 'data-tab-title': _('Configuration') }, [
 					E('div', { 'class': 'cbi-section' }, [
@@ -1079,13 +1081,9 @@ const ServiceView = view.extend({
 			]), 5);
 
 			const page = E('div', {}, [ panes ]);
-			ui.tabs.initTabGroup(panes.childNodes);
-			// initTabGroup 把标签栏建在 panes 里面；挪到最前面，hero 紧跟其后，
-			// 顺序就是 标签页 → 名字/简介/状态 → 标签内容，和 HomeProxy 一样
-			const tabMenu = panes.querySelector(':scope > ul.cbi-tabmenu');
-			if (tabMenu)
-				page.insertBefore(tabMenu, panes);
-			page.insertBefore(hero, panes);
+			// 只把真正的标签页交给 initTabGroup（panes[0] 必须是带 data-tab 的节点，
+			// 它会把 tabmenu 插到 panes 前面，switchTab 靠 menu.nextElementSibling 找 panes）
+			ui.tabs.initTabGroup(panes.querySelectorAll(':scope > [data-tab]'));
 			this.updateStatus();
 			this.packagePolling = true;
 			// 立刻查一次，别让"检查更新"按钮要等第一次轮询之后才可点
