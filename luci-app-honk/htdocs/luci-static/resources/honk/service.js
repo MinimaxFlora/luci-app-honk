@@ -284,11 +284,12 @@ body:has(.du-panes > [data-tab="status"]:not([data-tab-active="true"])) .cbi-pag
 /* 标签栏照 HomeProxy：整条白色卡片，标签是满高的块，选中的灰底 + 底部蓝线 */
 .du-page > .cbi-tabmenu {
 	background: var(--surface-color, #fff);
-	/* 照 HomeProxy：只有上面两个角是圆的，和内容之间留一条主题间距，
-	   不留间距的话卡片的阴影会压在白色标签栏上，接缝处出现一条深色的线 */
+	/* 标签栏和下面的内容连成一整张：不留灰缝，也不让接缝处出现阴影线 */
 	border-radius: var(--radius-card, 12px) var(--radius-card, 12px) 0 0;
 	padding: 0;
-	margin: 0 0 var(--section-gap, 1rem);
+	margin: 0;
+	position: relative;
+	z-index: 1;
 	overflow: hidden;
 	gap: 0;
 }
@@ -312,6 +313,13 @@ body:has(.du-panes > [data-tab="status"]:not([data-tab-active="true"])) .cbi-pag
 	color: var(--text-strong, #1f2329);
 	font-weight: 500;
 }
+/* 接到标签栏下面的那部分，去掉上圆角和阴影，接缝才是一条直线 */
+.du-panes > .cbi-map:first-child > h2,
+.du-panes > [data-tab-title] {
+	border-start-start-radius: 0;
+	border-start-end-radius: 0;
+}
+.du-panes > .cbi-map:first-child > h2 { box-shadow: none; }
 /* 标签页里的卡片要撑满宽度：主题把 [data-tab-title] 设成了 flex，子元素会缩成内容宽 */
 .du-panes > [data-tab-title] { flex-direction: column; }
 .du-panes > [data-tab-title] > * { width: 100%; min-width: 0; }
