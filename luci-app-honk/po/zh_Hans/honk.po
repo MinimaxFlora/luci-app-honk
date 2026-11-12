@@ -247,4 +247,26 @@ msgstr "部分软件源未能刷新，已用能加载的索引检查。"
 msgid "The package index could not be refreshed, so updates cannot be confirmed."
 msgstr "软件包索引未能刷新，无法确认是否有更新。"
 
+msgid "Open Web Interface"
+msgstr "打开 Web 界面"
 
+msgid "Pause"
+msgstr "暂停刷新"
+
+msgid "Resume"
+msgstr "继续刷新"
+
+msgid "Clear"
+msgstr "清空"
+
+msgid "Download"
+msgstr "下载日志"
+
+msgid "Enable"
+msgstr "启用"
+
+msgid "Basic Settings"
+msgstr "基础设置"
+
+msgid "Config Settings"
+msgstr "配置设置"

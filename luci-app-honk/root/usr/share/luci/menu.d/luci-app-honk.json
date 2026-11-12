@@ -15,7 +15,7 @@
     }
   },
   "admin/services/honk/status": {
-    "title": "Service status",
+    "title": "Basic Settings",
     "order": 10,
     "action": {
       "type": "view",
@@ -23,7 +23,7 @@
     }
   },
   "admin/services/honk/config": {
-    "title": "Configuration",
+    "title": "Config Settings",
     "order": 20,
     "action": {
       "type": "view",

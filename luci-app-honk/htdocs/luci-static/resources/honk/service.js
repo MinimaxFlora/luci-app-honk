@@ -268,6 +268,15 @@ const STYLE = `
 	white-space: pre-wrap; overflow-wrap: anywhere; word-break: normal; scrollbar-gutter: stable;
 }
 .du-editor pre { pointer-events: none; overflow: hidden; color: inherit; }
+.du-gutter {
+	position: absolute; top: 0; left: 0; width: 46px; height: 100%;
+	padding: 8px 6px 8px 0; box-sizing: border-box; overflow: hidden;
+	text-align: right; white-space: pre; user-select: none;
+	font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+	color: color-mix(in srgb, #8a8a8a 60%, currentColor);
+	border-right: 1px solid rgba(128,128,128,.25);
+}
+.du-editor pre, .du-editor textarea { padding-left: 56px; }
 /* Themes style code/span inside pre; anything that changes a glyph's box would
    push the colored text away from the caret, so only color is allowed here. */
 .du-editor pre * { background: none; padding: 0; margin: 0; border: 0; font: inherit; }
@@ -291,19 +300,28 @@ body[data-page="admin-services-honk-log"] .cbi-page-actions { display: none; }
    leaves the line in its text color. */
 .du-warn { color: color-mix(in srgb, var(--warn-color-high, var(--warning-heading-color)) 60%, currentColor); }
 .du-error { color: color-mix(in srgb, var(--error-color-high, var(--danger)) 60%, currentColor); }
+.du-logtext {
+	width: 100%; height: 60vh; min-height: 320px; box-sizing: border-box; resize: vertical;
+	font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+	white-space: pre; overflow: auto; margin-bottom: .5em;
+}
 .du-log { max-height: 50vh; overflow: auto; white-space: pre-wrap; word-break: break-all; font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 `;
 
 function createEditor(text, onInput) {
 	const pre = E('pre', { 'aria-hidden': 'true' });
+	const gutter = E('div', { 'class': 'du-gutter', 'aria-hidden': 'true' });
 	const textarea = E('textarea', { 'spellcheck': 'false', 'autocomplete': 'off', 'autocapitalize': 'off' });
 
 	const syncScroll = () => {
 		pre.scrollTop = textarea.scrollTop;
 		pre.scrollLeft = textarea.scrollLeft;
+		gutter.scrollTop = textarea.scrollTop;
 	};
 	const paint = () => {
-		pre.innerHTML = textarea.value.split('\n').map(highlightLine).join('\n') + '\n';
+		const rows = textarea.value.split('\n');
+		pre.innerHTML = rows.map(highlightLine).join('\n') + '\n';
+		gutter.textContent = rows.map((_, i) => i + 1).join('\n');
 		syncScroll();
 	};
 
@@ -328,8 +346,16 @@ function createEditor(text, onInput) {
 	});
 
 	paint();
+	// Ctrl+S 保存
+	textarea.addEventListener('keydown', ev => {
+		if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 's') {
+			ev.preventDefault();
+			document.getElementById('du-save-files')?.click();
+		}
+	});
+
 	return {
-		node: E('div', { 'class': 'du-editor' }, [ pre, textarea ]),
+		node: E('div', { 'class': 'du-editor' }, [ gutter, pre, textarea ]),
 		textarea,
 		setText(value) {
 			if (textarea.value !== value) {
@@ -877,6 +903,14 @@ const ServiceView = view.extend({
 				line.innerHTML = '<em><span style="color:' + color + '"><strong>' +
 					String(text).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]) +
 					'</strong></span></em>';
+				// 只有运行中才有面板按钮（和 adguardhome 的 Open Web Interface 一样）
+				if (running && this.webUiUrl)
+					line.append(' ', E('a', {
+						'class': 'btn cbi-button cbi-button-reload',
+						'href': this.webUiUrl,
+						'target': '_blank',
+						'rel': 'noopener noreferrer'
+					}, _('Open Web Interface')));
 			}
 			this.showServiceButtons(running);
 		});
@@ -989,17 +1023,27 @@ const ServiceView = view.extend({
 	updateLog() {
 		// logd returns nothing for lines=0; 1000 is what LuCI's own log view reads.
 		return L.resolveDefault(callLogRead(1000, false, true), []).then(entries => {
-			const lines = entries
+			const text = entries
 				.filter(e => this.app.logIdent.test(e.msg))
 				.slice(-500)
-				.map((e, i) => [ i ? '\n' : '', E('span', { 'class': 'du-p' }, new Date(e.time).toLocaleString()),
-					'  ', E('span', { 'class': logLevelClass(e) }, e.msg) ]);
-			const log = this.logBox;
-			const atBottom = log.scrollTop + log.clientHeight >= log.scrollHeight - 4;
-			log.replaceChildren(...(lines.length ? lines.flat() : [ _('No log entries.') ]));
+				.map(e => new Date(e.time).toLocaleString() + '  ' + e.msg)
+				.join('\n');
+			const box = this.logBox;
+			const atBottom = box.scrollTop + box.clientHeight >= box.scrollHeight - 4;
+			box.value = text || _('No log entries.');
 			if (atBottom)
-				log.scrollTop = log.scrollHeight;
+				box.scrollTop = box.scrollHeight;
 		});
+	},
+
+	downloadLog() {
+		const blob = new Blob([ this.logBox.value || '' ], { type: 'text/plain' });
+		const url = URL.createObjectURL(blob);
+		const a = E('a', { 'href': url, 'download': 'honk-' + Date.now() + '.log' });
+		document.body.appendChild(a);
+		a.click();
+		a.remove();
+		URL.revokeObjectURL(url);
 	},
 
 	async render([ entry, files, installed, bootEnabled ]) {
@@ -1011,7 +1055,10 @@ const ServiceView = view.extend({
 		this.entry = entry;
 		this.fileTabs = E('ul', { 'class': 'cbi-tabmenu' });
 		this.editorBox = E('div');
-		this.logBox = E('pre', { 'class': 'du-log' });
+		this.logBox = E('textarea', {
+			'class': 'du-logtext', 'readonly': 'readonly',
+			'spellcheck': 'false', 'wrap': 'off', 'rows': '24', 'aria-live': 'polite'
+		});
 		this.setFiles(files);
 
 		// 和 HomeProxy 一样：每个标签是独立的菜单页，标签条由 LuCI 自己渲染
@@ -1044,7 +1091,7 @@ const ServiceView = view.extend({
 			'type': 'checkbox', 'id': name + '-run',
 			'change': ev => ev.target.checked ? this.runServiceAction('start') : this.handleServiceAction('stop')
 		});
-		let o = s.option(form.DummyValue, '_status', _('Status'));
+		let o = s.option(form.DummyValue, '_status', _('Enable'));
 		o.renderWidget = () => E('div', { 'class': 'cbi-checkbox' }, [
 			this.runSwitch, E('label', { 'for': name + '-run' })
 		]);
@@ -1123,15 +1170,16 @@ const ServiceView = view.extend({
 			};
 		}
 
-		if (webUi) {
-			this.webUiBox = E('div', { 'class': 'du-web-ui' });
-			o = s.option(form.DummyValue, '_web_ui', _('Web interface'));
-			o.renderWidget = () => this.webUiBox;
-		}
 
 		return m.render().then(async mapNode => {
-			if (webUi)
-				await this.updateWebUi(files);
+			// 面板地址只算一次；运行中时按钮出现在状态行后面（照 adguardhome 的做法）
+			if (webUi) {
+				const info = await this.app.webUi(files).catch(() => null);
+				this.webUiUrl = info?.url ?? null;
+				this.webUiNote = info?.note ?? null;
+			}else{
+				this.webUiUrl = null;
+			}
 			poll.add(() => Promise.all([ this.updateStatus(), this.updateBoot() ]), 5);
 			this.updateStatus();
 			this.packagePolling = true;
@@ -1158,6 +1206,7 @@ const ServiceView = view.extend({
 				' ',
 				E('button', {
 					'class': 'btn cbi-button cbi-button-save',
+					'id': 'du-save-files',
 					'click': ui.createHandlerFn(this, 'handleSaveFiles')
 				}, _('Save files'))
 			])
@@ -1170,17 +1219,39 @@ const ServiceView = view.extend({
 	renderLogPage() {
 		const m = new form.Map(this.app.name, _('Log'));
 		const s = m.section(form.TypedSection);
+		this.logPaused = false;
+		const pauseBtn = E('button', {
+			'class': 'btn cbi-button',
+			'click': () => {
+				this.logPaused = !this.logPaused;
+				pauseBtn.textContent = this.logPaused ? _('Resume') : _('Pause');
+			}
+		}, _('Pause'));
 		s.render = () => E('div', { 'class': 'cbi-section' }, [
-			E('div', { 'class': 'right' }, E('button', {
-				'class': 'btn cbi-button',
-				'click': ui.createHandlerFn(this, 'updateLog')
-			}, _('Refresh'))),
-			this.logBox
+			this.logBox,
+			E('div', { 'class': 'right' }, [
+				pauseBtn,
+				' ',
+				E('button', {
+					'class': 'btn cbi-button',
+					'click': ui.createHandlerFn(this, 'updateLog')
+				}, _('Refresh')),
+				' ',
+				E('button', {
+					'class': 'btn cbi-button',
+					'click': () => { this.logBox.value = ''; }
+				}, _('Clear')),
+				' ',
+				E('button', {
+					'class': 'btn cbi-button',
+					'click': () => this.downloadLog()
+				}, _('Download'))
+			])
 		]);
 		return m.render().then(node => {
 			node.querySelector('.cbi-page-actions')?.remove();
 			this.updateLog().then(() => { this.logBox.scrollTop = this.logBox.scrollHeight; });
-			poll.add(() => this.updateLog(), 5);
+			poll.add(() => this.logPaused ? null : this.updateLog(), 5);
 			return node;
 		});
 	}
