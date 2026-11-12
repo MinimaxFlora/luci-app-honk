@@ -7,7 +7,7 @@ feed，可以直接 `src-link` 到 OpenWrt SDK 里编译。
 | 目录 | 包名 | 内容 |
 |---|---|---|
 | [`honk/`](honk) | `honk` | `/usr/bin/honk-core`（eBPF 透明代理引擎，内嵌 doona 面板）、procd init 脚本、`/etc/config/honk`、`/etc/honk/config.dae` |
-| [`luci-app-honk/`](luci-app-honk) | `luci-app-honk` + `luci-i18n-honk-zh-cn` / `-zh-tw` | LuCI 页面（服务状态、带语法高亮的配置编辑器、日志、软件更新）、菜单项、ACL、中文翻译 |
+| [`luci-app-honk/`](luci-app-honk) | `luci-app-honk` + `luci-i18n-honk-zh-cn` / `-zh-tw` | LuCI 页面（基础设置 / 配置设置 / 日志三页、带行号的配置编辑器、检查更新与一键安装）、菜单项、ACL、中文翻译 |
 | [`vmlinux-btf/`](vmlinux-btf) | `vmlinux-btf` | `/usr/lib/debug/boot/vmlinux`（CO-RE 用的 BTF 数据），包版本就是内核版本；整机编译时由包自己从内核头文件生成 |
 
 CI 在 `ubuntu-26.04` 上跑，同时产出两种包格式：**ipk**（OpenWrt 24.10 / opkg）和
@@ -240,8 +240,10 @@ opkg install vmlinux-btf_*.ipk honk_*.ipk luci-app-honk_*.ipk luci-i18n-honk-zh-
   装错内核 apk/opkg 会直接拒绝，这是有意的：BTF 里是结构体布局。
 * `honk` 和 `dae` 不能同时运行（都要 `dae0`/`daens`），页面里有互斥处理，
   但这里不提供 `dae`。
-* LuCI 页面里的“软件更新”面板调用 `/usr/libexec/honk-pkg`，它用的是 `apk`，
+* LuCI 页面里的“检查更新 / 安装”按钮调用 `/usr/libexec/honk-pkg`，它用的是 `apk`，
   在 opkg 的 24.10 上这块不可用，其余功能不受影响。
+* “打开 Web 界面”按钮只在 honk 运行中、且 `native_api.listen` 不是回环地址时出现；
+  绑在 `127.0.0.1` 上要自己开 SSH 隧道，页面里不给按钮。
 
 ## 鸣谢
 

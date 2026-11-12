@@ -321,15 +321,6 @@ repo_setup() {
 	fi
 }
 
-source_info() {
-	repo_setup || exit 1
-	json_init
-	json_add_string arch "$REPO_ARCH"
-	json_add_string url "$REPO_URL"
-	json_add_boolean signed "$REPO_SIGNED"
-	json_add_string file "$HONK_REPO_FILE"
-	json_dump
-}
 
 upgrade() {
 	action=$1
@@ -416,10 +407,6 @@ case "$command" in
 			seen="$seen$package "
 		done
 		upgrade upgrade "$app" "$@"
-		;;
-	source)
-		[ "$#" -eq 0 ] || fail 'Source takes no arguments.'
-		source_info
 		;;
 	install)
 		# 一键安装：配好本仓库的 apk 源，然后后台 apk add，前端轮询 status

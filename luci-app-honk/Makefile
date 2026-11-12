@@ -16,7 +16,7 @@ include $(TOPDIR)/rules.mk
 PKG_LICENSE:=GPL-3.0-or-later
 
 LUCI_TITLE:=LuCI support for honk
-LUCI_DEPENDS:=+luci-base +honk +jshn +flock +coreutils-timeout
+LUCI_DEPENDS:=+luci-base +honk +jshn +flock
 LUCI_PKGARCH:=all
 
 # luci.mk 默认用 git 提交时间算版本，编译目录没有 .git 时退回文件 mtime——那样每个

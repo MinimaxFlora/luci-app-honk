@@ -283,7 +283,7 @@ const STYLE = `
 .du-editor textarea { color: transparent; resize: none; outline: none; max-width: none; min-height: 0; }
 .du-c { color: color-mix(in srgb, #8a8a8a 60%, currentColor); }
 .du-s, .du-running { color: color-mix(in srgb, #2e9e5b 60%, currentColor); }
-.du-o, .du-stopped { color: color-mix(in srgb, #d14d4d 60%, currentColor); }
+.du-o { color: color-mix(in srgb, #d14d4d 60%, currentColor); }
 .du-f { color: color-mix(in srgb, #c7841a 60%, currentColor); }
 .du-k { color: color-mix(in srgb, #a35bd0 60%, currentColor); }
 .du-n { color: color-mix(in srgb, #c4660a 60%, currentColor); }
@@ -294,12 +294,9 @@ body[data-page="admin-services-honk-config"] .cbi-page-actions,
 body[data-page="admin-services-honk-log"] .cbi-page-actions { display: none; }
 /* 检测结果跟在按钮后面，不换行占一整行 */
 .du-pkg-status { display: inline; margin-left: .6em; }
-.cbi-value:has(.du-web-ui:empty) { display: none; }
 /* Bootstrap's warning and error colors, else Argon's: its warning text color
    (--warning itself is close to red) and --danger. A theme with neither
    leaves the line in its text color. */
-.du-warn { color: color-mix(in srgb, var(--warn-color-high, var(--warning-heading-color)) 60%, currentColor); }
-.du-error { color: color-mix(in srgb, var(--error-color-high, var(--danger)) 60%, currentColor); }
 .du-logtext {
 	width: 100%; height: 60vh; min-height: 320px; box-sizing: border-box; resize: vertical;
 	font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -366,21 +363,6 @@ function createEditor(text, onInput) {
 	};
 }
 
-/*
- * The level a line states itself wins: honk's tracing (" WARN "), dae's
- * logrus ("level=warning"). Other lines take the syslog priority they were
- * logged with, as logread shows it (daemon.warn, daemon.err).
- */
-function logLevelClass(entry) {
-	const m = /\s(ERROR|WARN|INFO|DEBUG|TRACE)\s|\blevel=(\w+)/.exec(entry.msg);
-	if (m) {
-		const level = (m[1] ?? m[2]).toLowerCase();
-		return /^(error|fatal|panic)$/.test(level) ? 'du-error' : /^warn/.test(level) ? 'du-warn' : '';
-	}
-	const severity = (entry.priority ?? 6) & 7;
-	return severity <= 3 ? 'du-error' : severity === 4 ? 'du-warn' : '';
-}
-
 const callLanAddress = rpc.declare({
 	object: 'uci',
 	method: 'get',
@@ -401,6 +383,7 @@ function isIp(host) {
 	}
 }
 
+/* doona 面板地址；不可达（没开、绑在 127.0.0.1）时返回 null。 */
 async function webUi(files) {
 	for (const file of files) {
 		const body = nativeApi.body(file.text ?? '');
@@ -416,34 +399,22 @@ async function webUi(files) {
 		if (!listen || Number(listen[3]) < 1 || Number(listen[3]) > 65535)
 			return null;
 		let host = listen[1] ?? listen[2];
-		if (!isIp(host))
-			return null;
 		const port = listen[3];
-		const luciHost = window.location.hostname.replace(/^\[|\]$/g, '');
-		if (host.startsWith('127.') || host === '::1') {
-			const destination = host.includes(':') ? '[' + host + ']' : host;
-			return { note: E('span', {}, [
-				_('doona listens on %s; open it through an SSH tunnel:').format(host),
-				' ',
-				E('code', {}, 'ssh -L ' + port + ':' + destination + ':' + port + ' root@' + luciHost),
-				E('br'),
-				_('To open it from the LAN instead, set %s and restart honk.').format('listen: \'0.0.0.0:' + port + '\'')
-			]) };
-		}
-		let note;
+		// 绑在回环上：浏览器也打不开，不给按钮
+		if (!isIp(host) || host.startsWith('127.') || host === '::1')
+			return null;
 		if (host === '0.0.0.0' || host === '::') {
-			host = luciHost;
+			host = window.location.hostname.replace(/^\[|\]$/g, '');
 			if (!isIp(host)) {
 				const reply = await L.resolveDefault(callLanAddress('network', 'lan', 'ipaddr'), {});
 				const address = reply.value ?? '';
 				const lan = (Array.isArray(address) ? address[0] ?? '' : address).split('/')[0];
-				if (isIp(lan) && !lan.includes(':'))
-					host = lan;
-				else
-					note = _('honk only accepts IP addresses; open LuCI by IP address.');
+				if (!isIp(lan) || lan.includes(':'))
+					return null;
+				host = lan;
 			}
 		}
-		return { url: 'http://' + (host.includes(':') ? '[' + host + ']' : host) + ':' + port + '/', note };
+		return 'http://' + (host.includes(':') ? '[' + host + ']' : host) + ':' + port + '/';
 	}
 	return null;
 }
@@ -595,22 +566,6 @@ const ServiceView = view.extend({
 
 	/* Web UI */
 
-	/* The link or the note of the webUi hook; the row is hidden while there is none (see STYLE) */
-	async updateWebUi(files) {
-		const webUi = await this.app.webUi(files);
-		const nodes = [];
-		if (webUi?.url)
-			nodes.push(E('a', {
-				'class': 'btn cbi-button',
-				'href': webUi.url,
-				'target': '_blank',
-				'rel': 'noopener noreferrer'
-			}, _('Open doona')));
-		if (webUi?.note)
-			nodes.push(webUi.url ? E('div', { 'class': 'cbi-value-description' }, webUi.note) : E('span', {}, webUi.note));
-		this.webUiBox.replaceChildren(...nodes);
-	},
-
 	/* Unsaved edits in the editor would undo the change, be overwritten by it,
 	   or be lost when the page reloads after Save & Apply. */
 	webUiFlagConflict() {
@@ -647,7 +602,10 @@ const ServiceView = view.extend({
 		this.webUiState = on;
 		await collectFiles(this.entry, readFromDisk).then(fresh => {
 			this.setFiles(fresh);
-			return this.updateWebUi(fresh);
+			return this.app.webUi(fresh).catch(() => null);
+		}).then(url => {
+			this.webUiUrl = url;
+			return this.updateStatus();
 		});
 	},
 
@@ -655,8 +613,8 @@ const ServiceView = view.extend({
 
 	async packageCommand(args) {
 		const command = '/usr/libexec/honk-pkg';
-		// rpc.declare has no per-call timeout in LuCI 25.12. Only the index
-		// refresh needs longer than the default; the helper bounds it to 25s.
+		// rpc.declare has no per-call timeout in LuCI 25.12 and the GitHub API
+		// call can take longer than the default, so this one gets its own.
 		const result = args[0] === 'check' ? await new Promise((resolve, reject) => {
 			const call = { object: 'file', method: 'exec', raise: true, resolve, reject };
 			request.post(rpc.getBaseURL(), {
@@ -906,7 +864,7 @@ const ServiceView = view.extend({
 				// 只有运行中才有面板按钮（和 adguardhome 的 Open Web Interface 一样）
 				if (running && this.webUiUrl)
 					line.append(' ', E('a', {
-						'class': 'btn cbi-button cbi-button-reload',
+						'class': 'btn cbi-button',
 						'href': this.webUiUrl,
 						'target': '_blank',
 						'rel': 'noopener noreferrer'
@@ -1173,13 +1131,7 @@ const ServiceView = view.extend({
 
 		return m.render().then(async mapNode => {
 			// 面板地址只算一次；运行中时按钮出现在状态行后面（照 adguardhome 的做法）
-			if (webUi) {
-				const info = await this.app.webUi(files).catch(() => null);
-				this.webUiUrl = info?.url ?? null;
-				this.webUiNote = info?.note ?? null;
-			}else{
-				this.webUiUrl = null;
-			}
+			this.webUiUrl = await this.app.webUi(files).catch(() => null);
 			poll.add(() => Promise.all([ this.updateStatus(), this.updateBoot() ]), 5);
 			this.updateStatus();
 			this.packagePolling = true;
