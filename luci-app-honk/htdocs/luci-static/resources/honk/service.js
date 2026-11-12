@@ -281,9 +281,11 @@ const STYLE = `
 /* The page buttons save the settings of the status tab only; the editor has its own. */
 body:has(.du-panes > [data-tab="status"]:not([data-tab-active="true"])) .cbi-page-actions { display: none; }
 .du-panes .right { margin: .5em 0; }
-/* 页头照 HomeProxy：直接用主题的 cbi-map / cbi-section 样式，只压一下间距 */
-.du-panes > .cbi-map { margin-bottom: .5em; }
-.du-panes > .cbi-map > .cbi-section { margin-bottom: 1em; }
+/* 页头只在“服务状态”标签显示，别的标签页和 HomeProxy 一样没有页头 */
+.du-panes:has(> [data-tab="status"]:not([data-tab-active="true"])) > .cbi-map { display: none; }
+.du-panes > .cbi-map > h2 { margin-top: 0; }
+/* 卡片之间留出和主题一致的间隙，别贴在一起 */
+.du-panes { display: flex; flex-direction: column; gap: var(--section-gap, 1rem); }
 /* 检测结果跟在按钮后面，不换行占一整行 */
 .du-pkg-status { display: inline; margin-left: .6em; }
 .cbi-value:has(.du-web-ui:empty) { display: none; }
@@ -1080,7 +1082,8 @@ const ServiceView = view.extend({
 				logPane.getAttribute('data-tab-active') === 'true' ? this.updateLog() : null
 			]), 5);
 
-			const page = E('div', {}, [ panes ]);
+			// 根节点用 .cbi-map：主题按它来排版（flex 列 + section-gap），标签栏才不至于贴边
+			const page = E('div', { 'class': 'cbi-map' }, [ panes ]);
 			// 只把真正的标签页交给 initTabGroup（panes[0] 必须是带 data-tab 的节点，
 			// 它会把 tabmenu 插到 panes 前面，switchTab 靠 menu.nextElementSibling 找 panes）
 			ui.tabs.initTabGroup(panes.querySelectorAll(':scope > [data-tab]'));
