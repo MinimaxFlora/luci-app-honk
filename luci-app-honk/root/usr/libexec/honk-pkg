@@ -52,68 +52,171 @@ query_installed() {
 		--installed --from installed --fields name,version --format json "$@"
 }
 
-# 检测更新不碰 apk 的索引：直接读我们自己软件源里的 index.json，拿它和已装版本比。
-# 这样 OpenWrt 镜像上某个坏掉的源（比如 video/packages.adb 被截断）不会影响检查结果，
-# 也不用等几十秒的 apk update。
-check_updates() {
-	repo_setup || fail 'Unable to determine the package source.'
-	index_url="$HONK_REPO_BASE/$REPO_ARCH/index.json"
+# 和 passwall 一样：版本从 GitHub Releases API 拿，安装是下载 release 里的 .apk
+# 再 apk add --allow-untrusted。完全不碰系统包索引，镜像坏掉也影响不到检查。
+HONK_GH_REPO=MinimaxFlora/luci-app-honk
 
-	index_file=$(mktemp /tmp/honk-index.XXXXXX) || fail 'Unable to create a temporary file.'
-	if ! wget -q -T 20 -O "$index_file" "$index_url" 2>/dev/null || [ ! -s "$index_file" ]; then
-		rm -f "$index_file"
-		fail "Unable to download the package index: $index_url"
+# 可选代理前缀（passwall 的 GitHub Proxy 同理）：uci set honk.config.gh_proxy=...
+# 值形如 'https://gh-proxy.org/'，拼在 api/download 地址前面。
+gh_proxy() {
+	uci -q get honk.config.gh_proxy 2>/dev/null
+}
+
+fetch_release() {
+	api="$(gh_proxy)https://api.github.com/repos/$HONK_GH_REPO/releases/latest"
+	file=$(mktemp /tmp/honk-gh.XXXXXX) || return 1
+	if ! wget -q -T 25 -O "$file" "$api" 2>/dev/null || [ ! -s "$file" ]; then
+		rm -f "$file"
+		printf '%s\n' "Unable to reach $api" >&2
+		return 1
 	fi
+	printf '%s' "$file"
+}
 
-	installed_file=$(mktemp /tmp/honk-installed.XXXXXX) || {
-		rm -f "$index_file"
-		fail 'Unable to create a temporary file.'
-	}
-	installed_json=$(query_installed "$@") || {
-		rm -f "$index_file" "$installed_file"
-		fail 'Unable to query installed packages.'
-	}
-	# jshn 是有状态的，先把已装版本摊成 "名字 版本" 的文本，后面用 awk 查，
-	# 免得在拼输出 JSON 的过程中被 json_load 把状态冲掉
+# 已装版本摊成 "名字 版本" 的文本：jshn 有状态，拼输出 JSON 时不能再 json_load
+build_installed_table() {
+	INSTALLED_TABLE=$(mktemp /tmp/honk-installed.XXXXXX) || return 1
+	installed_json=$(query_installed "$@") || return 1
 	json_init
-	json_load "{\"list\":$installed_json}" || {
-		rm -f "$index_file" "$installed_file"
-		fail 'Invalid apk query response.'
-	}
-	json_select list || {
-		rm -f "$index_file" "$installed_file"
-		fail 'Invalid apk query response.'
-	}
+	json_load "{\"list\":$installed_json}" || return 1
+	json_select list || return 1
 	i=1
 	while json_select "$i" 2>/dev/null; do
 		json_get_var name name
 		json_get_var version version
-		printf '%s %s\n' "$name" "$version" >> "$installed_file"
+		printf '%s %s\n' "$name" "$version" >> "$INSTALLED_TABLE"
 		json_select ..
 		i=$((i + 1))
 	done
+	return 0
+}
+
+# 版本比较自己算（apk version -t 不认带 - 的串，rc=1 且不输出）：
+# 归一化——把非字母数字的字符都当成分隔符，再逐段比，数字段按数值、其它按字典序。
+# 这样 26.316.12162~af54e6a-r1（已装）和 26.316.12162-af54e6a-r1（release tag）算相等。
+version_cmp() {
+	awk -v a="$1" -v b="$2" 'BEGIN {
+		na = a; gsub(/[^0-9A-Za-z]+/, ".", na)
+		nb = b; gsub(/[^0-9A-Za-z]+/, ".", nb)
+		n = split(na, x, "."); m = split(nb, y, ".")
+		k = (n > m ? n : m)
+		for (i = 1; i <= k; i++) {
+			p = (i <= n && x[i] != "") ? x[i] : "0"
+			q = (i <= m && y[i] != "") ? y[i] : "0"
+			if (p ~ /^[0-9]+$/ && q ~ /^[0-9]+$/) {
+				if (p + 0 > q + 0) { print 1; exit }
+				if (p + 0 < q + 0) { print -1; exit }
+			} else {
+				if (p > q) { print 1; exit }
+				if (p < q) { print -1; exit }
+			}
+		}
+		print 0
+	}'
+}
+
+# 输出每行：name <TAB> version <TAB> download_url
+# 版本以 release 的 tag 为准（GitHub 会把资产名里的 ~ + 换成 .，不能拿资产名解版本）；
+# 只列「已安装 + 有更新」的包；vmlinux-btf 因为锁内核，不参与自动更新
+release_updates() {
+	[ -n "${INSTALLED_TABLE:-}" ] || build_installed_table "$@" || return 1
+	release_file=$(fetch_release) || return 1
+	tag=$(jsonfilter -i "$release_file" -e '@.tag_name' 2>/dev/null)
+	urls=$(mktemp /tmp/honk-urls.XXXXXX) || { rm -f "$release_file"; return 1; }
+	jsonfilter -i "$release_file" -e '@.assets[*].browser_download_url' > "$urls" 2>/dev/null
+	rm -f "$release_file"
+	[ -n "$tag" ] || { rm -f "$urls"; return 1; }
+
+	# 已装的 luci-app-honk 版本代表"整套"，先跟 tag 比一次；不新就直接返回
+	installed=$(awk '$1 == "luci-app-honk" { print $2; exit }' "$INSTALLED_TABLE")
+	[ -n "$installed" ] || { rm -f "$urls"; return 1; }
+	tag_words=$(version_cmp "$installed" "$tag")
+
+	# 逐个包比：版本从资产文件名里取（GitHub 只会把 ~ + 换成 .，version_cmp 会归一化）
+	for name in "$@"; do
+		[ "$name" = "vmlinux-btf" ] && continue
+		current=$(awk -v n="$name" '$1 == n { print $2; exit }' "$INSTALLED_TABLE")
+		[ -n "$current" ] || continue
+		url=$(awk -v n="$name" -v a="$REPO_ARCH" '
+			{ b = $0; sub(/.*\//, "", b) }
+			index(b, n "-") == 1 && b ~ ("-" a "[.]apk$") { print; exit }' "$urls")
+		[ -n "$url" ] || continue
+		base=${url##*/}
+		version=${base#"$name-"}
+		version=${version%-"$REPO_ARCH".apk}
+		[ -n "$version" ] || continue
+		if [ "$(version_cmp "$current" "$version")" = "-1" ]; then
+			printf '%s	%s	%s\n' "$name" "$version" "$url"
+		elif [ "$tag_words" = "-1" ] && [ "$name" != "honk" ]; then
+			# 资产名里的版本比不出来，但整套(release tag)更新了 → 仍然重装这个包
+			[ "$(version_cmp "$current" "$version")" = "0" ] &&
+				printf '%s	%s	%s\n' "$name" "$version" "$url"
+		fi
+	done
+	rm -f "$urls"
+}
+
+check_updates() {
+	repo_setup || fail 'Unable to determine the package source.'
+	release_file=$(fetch_release) || fail 'Unable to reach the GitHub releases API.'
+	tag=$(jsonfilter -i "$release_file" -e '@.tag_name' 2>/dev/null)
+	rm -f "$release_file"
+	[ -n "$tag" ] || fail 'Unexpected GitHub releases API response.'
+
+	build_installed_table "$@" || fail 'Unable to query installed packages.'
 
 	json_init
-	json_add_string source "$index_url"
+	json_add_string source "$(gh_proxy)https://api.github.com/repos/$HONK_GH_REPO/releases"
+	json_add_string release "$tag"
 	json_add_string arch "$REPO_ARCH"
 	json_add_boolean signed "$REPO_SIGNED"
 	json_add_array packages
-	for name in "$@"; do
-		latest=$(jsonfilter -i "$index_file" -e "@.packages[\"$name\"]" 2>/dev/null)
-		[ -n "$latest" ] || continue
-		current=$(awk -v n="$name" '$1 == n { print $2; exit }' "$installed_file")
-		[ -n "$current" ] || continue
-		# apk version -t 打印 < = >：< 表示已装的比源里的旧
-		[ "$(/usr/bin/apk version -t "$current" "$latest" 2>/dev/null)" = "<" ] || continue
+	updates=$(release_updates "$@") || updates=
+	while IFS="	" read -r name version url; do
+		[ -n "$name" ] || continue
 		json_add_object
 		json_add_string name "$name"
-		json_add_string version "$latest"
-		json_add_string installed "$current"
+		json_add_string version "$version"
+		json_add_string installed "$(awk -v n="$name" '$1 == n { print $2; exit }' "$INSTALLED_TABLE")"
+		json_add_string url "$url"
 		json_close_object
-	done
+	done <<EOF
+$updates
+EOF
 	json_close_array
 	json_dump
-	rm -f "$index_file" "$installed_file"
+	rm -f "$INSTALLED_TABLE"
+}
+
+# passwall 的安装方式：把 release 里的 .apk 下到临时目录，再 apk add --allow-untrusted。
+# 依赖（kmod、v2ray-geoip 等）还是由 apk 从已配置的源里解析。
+install_from_release() {
+	dir=$(mktemp -d /tmp/honk-update.XXXXXX) || return 1
+	list=$(release_updates "$@") || { rm -rf "$dir"; return 1; }
+	if [ -z "$list" ]; then
+		printf '%s\n' 'Nothing to download: the installed versions are current.'
+		rm -rf "$dir"
+		return 0
+	fi
+	printf '%s\n' "$list" > "$dir/list"
+	failed=0
+	while IFS="	" read -r name version url; do
+		[ -n "$url" ] || continue
+		printf 'Downloading %s %s\n' "$name" "$version"
+		if ! wget -q -T 300 -O "$dir/$name.apk" "$url"; then
+			printf 'Failed to download %s\n' "$url"
+			failed=1
+		fi
+	done < "$dir/list"
+	if [ "$failed" -ne 0 ]; then
+		rm -rf "$dir"
+		return 1
+	fi
+	/usr/bin/apk --interactive=no --progress=no --force-missing-repositories \
+		add --allow-untrusted "$dir"/*.apk
+	code=$?
+	rm -rf "$dir"
+	return $code
 }
 
 write_result() {
@@ -269,22 +372,9 @@ upgrade() {
 	# so another tab cannot start a transaction while this worker is alive.
 	(
 		trap '' HUP
-		code=0
-		# 个别源坏掉（镜像给了半截文件）时 apk update 会返回 1，但可用索引照常加载；
-		# 而 apk 之后会因为"有源不可用"拒绝继续（stale/unavailable repositories），
-		# 所以加 --force-missing-repositories：它只容忍取不到的源，签名错误照样拒绝
-		/usr/bin/apk --interactive=no --progress=no update || true
-		if [ "$action" = install ]; then
-			if [ "$REPO_SIGNED" = 1 ]; then
-				/usr/bin/apk --interactive=no --progress=no --force-missing-repositories add "$@"
-			else
-				/usr/bin/apk --interactive=no --progress=no --force-missing-repositories add --allow-untrusted "$@"
-			fi
-			code=$?
-		else
-			/usr/bin/apk --interactive=no --progress=no --force-missing-repositories upgrade "$@"
-			code=$?
-		fi
+		# 和 passwall 一样：下载 release 里的 .apk，再 apk add --allow-untrusted
+		install_from_release "$@"
+		code=$?
 		[ "$code" -ne 0 ] || reload_assets "$app" "$@"
 		write_result "$code"
 	) </dev/null >>"$LOG" 2>&1 &

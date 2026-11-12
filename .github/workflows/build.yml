@@ -150,6 +150,8 @@ jobs:
           # 固件里编进去的就是这种（26.315.48366~2b0dd94）。CI 的临时 feed 目录没有
           # .git，会退回 0.<YYYYMMDD>.<秒> —— 比固件里的版本小，apk 就永远认为我们的
           # 包是降级、也就永远检测不到更新。所以这里按同一格式从提交时间算一遍。
+          # 注意 tag 里不能出现 ~，发布 Release 时会把 ~ 换成 -；检测更新时两边都会
+          # 归一化后比较（见 luci-app-honk/root/usr/libexec/honk-pkg 的 version_cmp）。
           ts=$(git log -1 --format=%ct)
           luci_ver="$(date -u --date="@$ts" '+%y.%j').$(printf '%05d' $((ts % 86400)))~$(git rev-parse --short=7 HEAD)"
 
@@ -503,3 +505,43 @@ jobs:
             cd - >/dev/null
             echo "已推送 $branch 分支"
           done
+
+      # 检测更新走 GitHub Releases API（和 passwall 一样），所以每次构建都要留一个
+      # release：tag 用 luci-app-honk 的版本（~ 不能出现在 git tag 里，换成 -）
+      - name: 发布 Release
+        if: github.server_url == 'https://github.com'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -eu
+          ver=""
+          for d in out/apk/*/; do
+            arch=$(basename "$d")
+            f=$(ls "$d"luci-app-honk-"$arch"-*.apk 2>/dev/null | head -1)
+            [ -n "$f" ] || f=$(ls "$d"luci-app-honk-*.apk 2>/dev/null | head -1)
+            [ -n "$f" ] || continue
+            b=$(basename "$f" .apk)
+            b=${b#luci-app-honk-}
+            ver=${b%-"$arch"}
+            break
+          done
+          [ -n "$ver" ] || { echo "没有 apk 产物，跳过 Release"; exit 0; }
+          tag=$(printf '%s' "$ver" | tr '~' '-')
+          echo "release tag: $tag"
+
+          mkdir -p out/release
+          cp out/apk/*/*.apk out/ipk/*/*.ipk out/release/ 2>/dev/null || true
+          echo "资产数: $(ls -1 out/release | wc -l)"
+
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" out/release/* --clobber
+            echo "release $tag 已存在，资产已更新"
+          else
+            gh release create "$tag" out/release/* \
+              --title "honk $tag" \
+              --notes "CI 构建（${SHA:0:7}）：honk / luci-app-honk / vmlinux-btf，ipk 与 apk 两种格式。" \
+              --target "$SHA" \
+              --latest
+            echo "release $tag 创建完成"
+          fi
